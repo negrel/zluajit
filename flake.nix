@@ -29,6 +29,7 @@
                 zig
                 zls
                 lua51Packages.lua
+                luajit
               ];
 
               LD_LIBRARY_PATH = "${lib.makeLibraryPath buildInputs}";

@@ -25,7 +25,7 @@ pub fn build(b: *std.Build) void {
         .name = "zlua",
         .root_module = module,
     });
-    lib.linkSystemLibrary("lua");
+    lib.linkSystemLibrary("luajit-5.1");
     lib.linkLibC();
 
     // This declares intent for the library to be installed into the standard
@@ -38,7 +38,7 @@ pub fn build(b: *std.Build) void {
     const lib_unit_tests = b.addTest(.{
         .root_module = module,
     });
-    lib_unit_tests.linkSystemLibrary("lua");
+    lib_unit_tests.linkSystemLibrary("luajit-5.1");
     lib_unit_tests.linkLibC();
 
     const run_lib_unit_tests = b.addRunArtifact(lib_unit_tests);
