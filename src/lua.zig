@@ -4,8 +4,21 @@ const std = @import("std");
 const builtin = @import("builtin");
 
 const c = @import("./c.zig").c;
-const recover = @import("./recover.zig");
+
 const testutils = @import("./testutils.zig");
+const recoverCall = testutils.recoverCall;
+const recoverGetGlobalAny = testutils.recoverGetGlobalAny;
+const recoverNewThread = testutils.recoverNewThread;
+const recoverOpenBase = testutils.recoverOpenBase;
+const recoverPopValue = testutils.recoverPopValue;
+const recoverPushAnyType = testutils.recoverPushAnyType;
+const recoverPushValue = testutils.recoverPushValue;
+const recoverableLuaPanic = testutils.recoverableLuaPanic;
+
+pub const Global = c.LUA_GLOBALSINDEX;
+
+pub const Integer = c.lua_Integer;
+pub const Number = c.lua_Number;
 
 /// State is a wrapper around [c.lua_State] and more precisely around main
 /// thread.
@@ -50,6 +63,12 @@ pub const State = struct {
     /// Returns a [Thread] handle to main Lua thread.
     pub fn asThread(self: Self) Thread {
         return Thread.init(self.lua);
+    }
+
+    /// Opens and loads base Lua library.
+    pub fn openBase(self: Self) void {
+        c.lua_pushcfunction(self.lua, c.luaopen_base);
+        c.lua_call(self.lua, 0, 0);
     }
 };
 
@@ -193,7 +212,7 @@ pub const Thread = struct {
         c.lua_getglobal(self.lua, name);
         if (currentTop == self.top()) return null;
 
-        return self.popAny(T);
+        return self.popAnyType(T);
     }
 
     /// Pops a value from the stack and sets it as the new value of global `name`.
@@ -205,7 +224,7 @@ pub const Thread = struct {
 
     /// Sets provided value as the new value of global `name`.
     pub fn setGlobalAny(self: Self, name: [*c]const u8, value: anytype) void {
-        self.pushAny(value);
+        self.pushAnyType(value);
         self.setGlobal(name);
     }
 
@@ -214,7 +233,7 @@ pub const Thread = struct {
     ///
     /// This is the same as lua_isboolean.
     pub fn isBoolean(self: Self, idx: c_int) bool {
-        return c.lua_isboolean(self.lua, idx) != 0;
+        return c.lua_isboolean(self.lua, idx);
     }
 
     /// Returns true if the value at the given acceptable index is a [CFunction],
@@ -230,7 +249,7 @@ pub const Thread = struct {
     ///
     /// This is the same as lua_isfunction.
     pub fn isFunction(self: Self, idx: c_int) bool {
-        return c.lua_isfunction(self.lua, idx) != 0;
+        return c.lua_isfunction(self.lua, idx);
     }
 
     /// Returns true if the value at the given acceptable index is nil, and
@@ -238,7 +257,7 @@ pub const Thread = struct {
     ///
     /// This is the same as lua_isnil.
     pub fn isNil(self: Self, idx: c_int) bool {
-        return c.lua_isnil(self.lua, idx) != 0;
+        return c.lua_isnil(self.lua, idx);
     }
 
     /// Returns true if the given acceptable index is not valid (that is, it
@@ -246,7 +265,7 @@ pub const Thread = struct {
     ///
     /// This is the same as lua_isnone.
     pub fn isNone(self: Self, idx: c_int) bool {
-        return c.lua_isnone(self.lua, idx) != 0;
+        return c.lua_isnone(self.lua, idx);
     }
 
     /// Returns true if the given acceptable index is not valid (that is, it
@@ -255,7 +274,7 @@ pub const Thread = struct {
     ///
     /// This is the same as lua_isnoneornil.
     pub fn isNoneOrNil(self: Self, idx: c_int) bool {
-        return c.lua_isnoneornil(self.lua, idx) != 0;
+        return c.lua_isnoneornil(self.lua, idx);
     }
 
     /// Returns true if the value at the given acceptable index is a number or a
@@ -279,7 +298,7 @@ pub const Thread = struct {
     ///
     /// This is the same as lua_istable.
     pub fn isTable(self: Self, idx: c_int) bool {
-        return c.lua_istable(self.lua, idx) != 0;
+        return c.lua_istable(self.lua, idx);
     }
 
     /// Returns true if the value at the given acceptable index is a thread, and
@@ -287,7 +306,7 @@ pub const Thread = struct {
     ///
     /// This is the same as lua_isthread.
     pub fn isThread(self: Self, idx: c_int) bool {
-        return c.lua_isthread(self.lua, idx) != 0;
+        return c.lua_isthread(self.lua, idx);
     }
 
     /// Returns true if the value at the given acceptable index is a userdata
@@ -303,7 +322,7 @@ pub const Thread = struct {
     ///
     /// This is the same as lua_islightuserdata.
     pub fn isLightUserData(self: Self, idx: c_int) bool {
-        return c.lua_islightuserdata(self.lua, idx) != 0;
+        return c.lua_islightuserdata(self.lua, idx);
     }
 
     /// Returns true if the two values in acceptable indices `index1` and
@@ -341,7 +360,7 @@ pub const Thread = struct {
     /// convertible to a number; otherwise, lua_tonumber returns 0.
     ///
     /// This is the same as lua_tonumber.
-    pub fn toNumber(self: Self, idx: c_int) c.lua_Number {
+    pub fn toNumber(self: Self, idx: c_int) Number {
         return c.lua_tonumber(self.lua, idx);
     }
 
@@ -351,7 +370,7 @@ pub const Thread = struct {
     /// If the number is not an integer, it is truncated in some non-specified way.
     ///
     /// This is the same as lua_tointeger.
-    pub fn toInteger(self: Self, idx: c_int) c.lua_Integer {
+    pub fn toInteger(self: Self, idx: c_int) Integer {
         return c.lua_tointeger(self.lua, idx);
     }
 
@@ -376,7 +395,8 @@ pub const Thread = struct {
     /// state. This string always has a zero ('\0') after its last character
     /// (as in C), but can contain other zeros in its body. Because Lua has
     /// garbage collection, there is no guarantee that the pointer returned by
-    /// toString will be valid after the corresponding value is removed from the stack.
+    /// toString will be valid after the corresponding value is removed from the
+    /// stack.
     ///
     /// This is the same as lua_tolstring.
     pub fn toString(self: Self, idx: c_int) ?[]const u8 {
@@ -385,8 +405,8 @@ pub const Thread = struct {
         return str[0..len];
     }
 
-    /// Converts a value at the given acceptable index to a C function. That
-    /// value must be a C function; otherwise, returns null.
+    /// Converts a value at the given acceptable index to a [CFunction]. That
+    /// value must be a [CFunction]; otherwise, returns null.
     ///
     /// This is the same as lua_tocfunction.
     pub fn toCFunction(self: Self, idx: c_int) ?CFunction {
@@ -438,49 +458,64 @@ pub const Thread = struct {
     }
 
     /// Gets a value of type T at position `idx` from Lua stack without popping
-    /// it. Values on the stack may be converted to type T (e.g. )
-    pub fn toAny(self: Self, comptime T: type, idx: c_int) ?T {
+    /// it. Values on the stack may be converted to type T (e.g. "1" becomes 1
+    /// if T is f64).
+    pub fn toAnyType(self: Self, comptime T: type, idx: c_int) ?T {
         return switch (T) {
             bool => self.toBoolean(idx),
             FunctionRef => FunctionRef.init(ValueRef.init(self, idx)),
             *anyopaque => self.toUserData(idx),
             f32, f64 => @floatCast(self.toNumber(idx)),
-            c.lua_Integer => self.toInteger(idx),
+            Integer => self.toInteger(idx),
             []const u8 => self.toString(idx),
             TableRef => TableRef.init(ValueRef.init(self, idx)),
             *c.lua_State => c.lua_tothread(self.lua, idx),
             Thread => self.toThread(idx),
-            State => (self.toAny(Thread, idx) orelse return null).asState(),
+            State => (self.toAnyType(Thread, idx) orelse return null).asState(),
             Value => {
                 return switch (self.valueType(idx) orelse return null) {
                     .thread => .{
-                        .thread = self.toAny(Thread, idx) orelse return null,
+                        .thread = self.toAnyType(Thread, idx) orelse return null,
                     },
-                    .bool => .{
-                        .bool = self.toAny(bool, idx) orelse return null,
+                    .boolean => .{
+                        .boolean = self.toAnyType(bool, idx) orelse return null,
                     },
                     .nil => null,
                     .string => .{
-                        .string = self.toAny([]const u8, idx) orelse return null,
+                        .string = self.toAnyType([]const u8, idx) orelse return null,
                     },
                     .number => .{
-                        .number = self.toAny(f64, idx) orelse return null,
+                        .number = self.toAnyType(f64, idx) orelse return null,
                     },
                     .function => .{
-                        .function = self.toAny(FunctionRef, idx) orelse return null,
+                        .function = self.toAnyType(FunctionRef, idx) orelse return null,
                     },
                     .table => .{
-                        .table = self.toAny(TableRef, idx) orelse return null,
+                        .table = self.toAnyType(TableRef, idx) orelse return null,
                     },
                     .userdata => .{
-                        .userdata = self.toAny(*anyopaque, idx) orelse return null,
+                        .userdata = self.toAnyType(*anyopaque, idx) orelse return null,
                     },
                     .lightuserdata => .{
-                        .lightuserdata = self.toAny(*anyopaque, idx) orelse return null,
+                        .lightuserdata = self.toAnyType(*anyopaque, idx) orelse return null,
                     },
                 };
             },
-            else => @compileError("can't get value of type " ++ @typeName(T) ++ " from Lua stack"),
+            else => {
+                switch (@typeInfo(T)) {
+                    .@"enum" => |info| {
+                        if (self.valueType(idx) != .string) return null;
+                        const str = self.toString(idx);
+                        inline for (info.fields) |f| {
+                            if (std.mem.eql(u8, str, f.name)) {
+                                return @enumFromInt(f.value);
+                            }
+                        }
+                        return null;
+                    },
+                    else => @compileError("can't get value of type " ++ @typeName(T) ++ " from Lua stack"),
+                }
+            },
         };
     }
 
@@ -493,8 +528,8 @@ pub const Thread = struct {
 
     /// Pops a value of type T from top of Lua stack. If returned value is null
     /// nothing was popped from the stack.
-    pub fn popAny(self: Self, comptime T: type) ?T {
-        const v = self.toAny(T, -1);
+    pub fn popAnyType(self: Self, comptime T: type) ?T {
+        const v = self.toAnyType(T, -1);
         if (v != null)
             self.pop(1);
         return v;
@@ -524,14 +559,14 @@ pub const Thread = struct {
     /// Pushes a number with value `n` onto the stack.
     ///
     /// This is the same as lua_pushnumber.
-    pub fn pushNumber(self: Self, n: c.lua_Number) void {
+    pub fn pushNumber(self: Self, n: Number) void {
         c.lua_pushnumber(self.lua, n);
     }
 
     /// Pushes a number with value `n` onto the stack.
     ///
     /// This is the same as lua_pushinteger.
-    pub fn pushInteger(self: Self, n: c.lua_Integer) void {
+    pub fn pushInteger(self: Self, n: Integer) void {
         c.lua_pushinteger(self.lua, n);
     }
 
@@ -576,6 +611,38 @@ pub const Thread = struct {
         c.lua_pushcfunction(self.lua, cfn);
     }
 
+    /// Pushes a Zig function onto the stack.
+    ///
+    /// This function generates a [CFunction] wrapper at comptimes that takes
+    /// care of extracting argument from stack and pushing result onto the
+    /// stack.
+    pub fn pushZigFunction(self: Self, func: anytype) void {
+        const Func = @TypeOf(func);
+        const info = @typeInfo(Func).@"fn";
+
+        self.pushCFunction(struct {
+            fn cfunc(lua: ?*c.lua_State) callconv(.c) c_int {
+                const th = Thread.init(lua.?);
+
+                var args: std.meta.ArgsTuple(Func) = undefined;
+                inline for (
+                    &args,
+                    info.params,
+                    1..info.params.len + 1,
+                ) |*arg, p, i| arg.* = th.checkAnyType(i, p.type.?);
+
+                const result = @call(.auto, func, args);
+
+                if (info.return_type.? != void) {
+                    th.pushAnyType(result);
+                    return 1;
+                }
+
+                return 0;
+            }
+        }.cfunc);
+    }
+
     /// Pushes a light userdata onto the stack.
     ///
     /// Userdata represent C values in Lua. A light userdata represents a
@@ -597,7 +664,9 @@ pub const Thread = struct {
     }
 
     /// Pushes value `v` onto Lua stack.
-    pub fn pushAny(self: Self, v: anytype) void {
+    /// This functions uses appropriate push function at comptime based on type
+    /// of `v`.
+    pub fn pushAnyType(self: Self, v: anytype) void {
         self.pushT(@TypeOf(v), v);
     }
 
@@ -609,28 +678,28 @@ pub const Thread = struct {
             CFunction => return self.pushCFunction(v),
             *anyopaque => return self.pushLightUserData(v),
             f32, f64 => return self.pushNumber(v),
-            c.lua_Integer => return self.pushInteger(v),
+            Integer => return self.pushInteger(v),
             []const u8 => return self.pushString(v),
-            TableRef, FunctionRef => return self.pushAny(v.ref),
+            TableRef, FunctionRef => return self.pushAnyType(v.ref),
             ValueRef => return self.pushValue(v.idx),
-            *c.lua_State => return self.pushAny(Thread.init(v)),
+            *c.lua_State => return self.pushAnyType(Thread.init(v)),
             Thread => {
                 _ = v.pushThread();
                 if (v.lua != self.lua) v.xMove(self, 1);
                 return;
             },
-            State => return v.asThread().pushAny(v.asThread()),
+            State => return v.asThread().pushAnyType(v.asThread()),
             // TODO: userdata => {},
             Value => return switch (v) {
-                .bool => self.pushAny(v.bool),
-                .function => self.pushAny(v.function),
-                .lightuserdata => self.pushAny(v.lightuserdata),
+                .boolean => self.pushAnyType(v.boolean),
+                .function => self.pushAnyType(v.function),
+                .lightuserdata => self.pushAnyType(v.lightuserdata),
                 .nil => return,
-                .number => self.pushAny(v.number),
-                .string => self.pushAny(v.string),
-                .table => self.pushAny(v.table),
-                .thread => self.pushAny(v.thread),
-                .userdata => self.pushAny(v.userdata),
+                .number => self.pushAnyType(v.number),
+                .string => self.pushAnyType(v.string),
+                .table => self.pushAnyType(v.table),
+                .thread => self.pushAnyType(v.thread),
+                .userdata => self.pushAnyType(v.userdata),
             },
             else => {
                 switch (@typeInfo(T)) {
@@ -649,6 +718,7 @@ pub const Thread = struct {
                             return;
                         }
                     },
+                    .@"enum" => return self.pushString(@tagName(v)),
                     else => {},
                 }
             },
@@ -657,11 +727,221 @@ pub const Thread = struct {
         @compileError("can't push value of type " ++ @typeName(T) ++ " on Lua stack");
     }
 
+    /// Checks whether the function has an argument of any type (including nil)
+    /// at position `narg`.
+    ///
+    /// This is the same as luaL_checkany.
+    pub fn checkAny(self: Self, narg: c_int) void {
+        return c.luaL_checkany(self.lua, narg);
+    }
+
+    /// Checks whether the function argument `narg` is a number and returns this
+    /// number cast to a c_int.
+    ///
+    /// This is the same as luaL_checkint.
+    pub fn checkInt(self: Self, narg: c_int) c_int {
+        return c.luaL_checkint(self.lua, narg);
+    }
+
+    /// Checks whether the function argument `narg` is a number and returns this
+    /// number cast to an Integer.
+    ///
+    /// This is the same as luaL_checkinteger.
+    pub fn checkInteger(self: Self, narg: c_int) Integer {
+        return c.luaL_checkinteger(self.lua, narg);
+    }
+
+    /// Checks whether the function argument `narg` is a number and returns this
+    /// number cast to a c_long.
+    ///
+    /// This is the same as luaL_checklong.
+    pub fn checkLong(self: Self, narg: c_int) c_long {
+        return c.luaL_checklong(self.lua, narg);
+    }
+
+    /// Checks whether the function argument `narg` is a string and returns this
+    /// string
+    /// This function uses Thread.toString to get its result, so all conversions
+    /// and caveats of that function apply here.
+    ///
+    /// This is the same as luaL_checkstring.
+    pub fn checkString(self: Self, narg: c_int) ?[]const u8 {
+        var len: usize = 0;
+        const str = c.luaL_checklstring(self.lua, narg, &len) orelse return null;
+        return str[0..len];
+    }
+
+    /// Checks whether the function argument `narg` has type `vtype`.
+    ///
+    /// This is the same as luaL_checktype.
+    pub fn checkValueType(self: Self, narg: c_int, vtype: ValueType) void {
+        return c.luaL_checktype(self.lua, narg, @intFromEnum(vtype));
+    }
+
+    /// Checks whether the function argument `narg` is a number and returns this
+    /// number.
+    ///
+    /// This is the same as luaL_checknumber.
+    pub fn checkNumber(self: Self, narg: c_int) Number {
+        return c.luaL_checknumber(self.lua, narg);
+    }
+
+    /// Checks whether the function argument `narg` is a string and searches for
+    /// this string in the possible variants of enum T. Returns the variant with
+    /// name matching the string. Raises an error if the argument is not a
+    /// string or if the string cannot be found.
+    ///
+    /// If def is not null, the function uses def as a default value when there
+    /// is no argument narg or if this argument is nil.
+    ///
+    /// This is a useful function for mapping strings to Zig enums. (The usual
+    /// convention in Lua libraries is to use strings instead of numbers to
+    /// select options.)
+    ///
+    /// This is the same as luaL_checkoption.
+    pub fn checkOption(
+        self: Self,
+        narg: c_int,
+        def: [*c]const u8,
+        lst: [*c]const [*c]const u8,
+    ) c_int {
+        return c.luaL_checkoption(self.lua, narg, def, lst);
+    }
+
+    /// Checks whether the function argument `narg` is a string and searches for
+    /// this string in the possible variants of enum T. Returns the variant with
+    /// name matching the string. Raises an error if the argument is not a
+    /// string or if the string cannot be found.
+    ///
+    /// If def is not null, the function uses def as a default value when there
+    /// is no argument narg or if this argument is nil.
+    ///
+    /// This is a useful function for mapping strings to Zig enums. (The usual
+    /// convention in Lua libraries is to use strings instead of numbers to
+    /// select options.)
+    ///
+    /// This is similar to luaL_checkoption.
+    pub fn checkEnum(
+        self: Self,
+        narg: c_int,
+        comptime T: type,
+        def: ?T,
+    ) ?T {
+        const info = @typeInfo(T).@"enum";
+
+        const lst: [info.fields.len:0][*c]const u8 = undefined;
+        inline for (&lst, info.fields) |*l, f| {
+            l.* = f.name;
+        }
+
+        const idx = self.checkOption(
+            self.lua,
+            narg,
+            if (def) @tagName(def) else null,
+            lst,
+        );
+
+        return @enumFromInt(info.fields[idx].value);
+    }
+
+    /// Checks whether the function argument narg is a userdata of the type
+    /// `tname` (see Thread.newMetaTable).
+    ///
+    /// This is the same as luaL_checkudata.
+    pub fn checkUserData(
+        self: Self,
+        narg: c_int,
+        tname: [*c]const u8,
+    ) *anyopaque {
+        return c.luaL_checkudata(self.lua, narg, tname);
+    }
+
+    /// Checks whether the argument `narg` is of type T and returns it.
+    pub fn checkAnyType(self: Self, narg: c_int, comptime T: type) T {
+        switch (T) {
+            bool => return self.isBoolean(narg) or self.typeError(narg, "boolean"),
+            CFunction => {
+                self.isCFunction(narg) or self.argError(
+                    narg,
+                    "native C function expected",
+                );
+                return self.toCFunction(narg).?;
+            },
+            f32, f64 => return @floatCast(self.checkNumber(narg)),
+            Integer => return self.checkInteger(narg),
+            c_int => return self.checkInt(narg),
+            []const u8 => return self.checkString(narg),
+            TableRef => {
+                self.checkValueType(narg, .table) or self.typeError(
+                    narg,
+                    "table",
+                );
+                return self.toAnyType(TableRef, narg).?;
+            },
+            ValueRef => {
+                self.checkAny(narg);
+                return self.toAnyType(ValueRef, narg).?;
+            },
+            *c.lua_State => {
+                self.checkValueType(narg, .thread);
+                return self.toThread(narg).?.lua;
+            },
+            Thread => {
+                self.checkValueType(narg, .thread);
+                return self.toThread(narg).?;
+            },
+            State => {
+                const th = self.checkAnyType(narg, Thread);
+                return th.asState() orelse self.typeError(narg, "State");
+            },
+            Value => {
+                self.checkAny(narg);
+                return self.toAnyType(Value, narg);
+            },
+            else => {
+                switch (@typeInfo(T)) {
+                    .pointer => |info| {
+                        return switch (info.size) {
+                            .one => return self.checkAnyType(narg, info.child),
+                            else => @compileError("pointer type of size " ++ @tagName(info.size) ++ " is not supported (" ++ @typeName(T) ++ ")"),
+                        };
+                    },
+                    .optional => |info| {
+                        if (self.isNil(narg)) {
+                            return null;
+                        }
+                        return self.checkAnyType(narg, info.child);
+                    },
+                    else => {},
+                }
+            },
+        }
+
+        @compileError("can't check value of type " ++ @typeName(T) ++ " on Lua stack");
+    }
+
+    /// Generates an error with a message like the following:
+    ///     location: bad argument narg to 'func' (tname expected, got rt)
+    /// where location is produced by Thread.where, func is the name of the
+    /// current function, and `rt` is the type name of the actual argument.
+    pub fn typeError(self: Self, narg: c_int, tname: [*c]const u8) noreturn {
+        c.luaL_typerror(self.lua, narg, tname);
+    }
+
+    /// Raises an error with the following message, where func is retrieved from
+    /// the call stack:
+    ///     bad argument #<narg> to <func> (<extramsg>)
+    ///
+    /// This is the same as luaL_argerror.
+    pub fn argError(self: Self, narg: c_int, extramsg: [*c]const u8) noreturn {
+        c.luaL_argerror(self.lua, narg, extramsg);
+    }
+
     /// Dump [Thread] Lua stack using [std.debug.print].
     pub fn dumpStack(self: Self) void {
         std.debug.print("lua stack size {}\n", .{self.top()});
         for (1..@as(usize, @intCast(self.top())) + 1) |i| {
-            const val = self.toAny(Value, @intCast(i));
+            const val = self.toAnyType(Value, @intCast(i));
             if (val != null) {
                 if (val.? == .string) {
                     std.debug.print("  stack[{}] '{s}'\n", .{ i, val.?.string });
@@ -672,6 +952,21 @@ pub const Thread = struct {
                 std.debug.print("  stack[{}] null\n", .{i});
             }
         }
+    }
+
+    /// Pushes onto the stack a string identifying the current position of the
+    /// control at level lvl in the call stack. Typically this string has the
+    /// following format:
+    ///     chunkname:currentline:
+    ///
+    /// Level 0 is the running function, level 1 is the function that called the
+    /// running function, etc.
+    ///
+    /// This function is used to build a prefix for error messages.
+    ///
+    /// This is the same as luaL_where.
+    pub fn where(self: Self, lvl: c_int) void {
+        c.luaL_where(self.lua, lvl);
     }
 
     /// Returns true if is is the main [Thread] and false otherwise.
@@ -813,8 +1108,8 @@ pub const Thread = struct {
     /// is, it does not invoke metamethods.
     ///
     /// This is the same as lua_rawseti.
-    pub fn rawSeti(self: Self, idx: c_int) void {
-        c.lua_rawseti(self.lua, idx);
+    pub fn rawSeti(self: Self, idx: c_int, n: c_int) void {
+        c.lua_rawseti(self.lua, idx, n);
     }
 
     /// Pops a table from the stack and sets it as the new metatable for the
@@ -897,8 +1192,14 @@ pub const Thread = struct {
     /// information to the error message, such as a stack traceback. Such
     /// information cannot be gathered after the return of lua_pcall, since by
     /// then the stack has unwound.
-    pub fn pCall(self: Self, nargs: c_int, nresults: c_int, errfunc: c_int) CallError!void {
-        return callErrorFromInt(c.lua_pcall(self.lua, nargs, nresults, errfunc));
+    pub fn pCall(
+        self: Self,
+        nargs: c_int,
+        nresults: c_int,
+        errfunc: c_int,
+    ) CallError!void {
+        const code = c.lua_pcall(self.lua, nargs, nresults, errfunc);
+        return callErrorFromInt(code);
     }
 
     /// Calls the C function func in protected mode. func starts with only one
@@ -908,7 +1209,11 @@ pub const Thread = struct {
     /// change the stack. All values returned by func are discarded.
     ///
     /// This is the same as lua_cpcall.
-    pub fn cPCall(self: Self, func: CFunction, udata: ?*anyopaque) CallError!void {
+    pub fn cPCall(
+        self: Self,
+        func: CFunction,
+        udata: ?*anyopaque,
+    ) CallError!void {
         return callErrorFromInt(c.lua_cpcall(self.lua, func, udata));
     }
 
@@ -960,9 +1265,9 @@ pub const Thread = struct {
     /// [CFunction], as follows:
     ///     return thread.yield(nresults);
     ///
-    /// When a [CFunction] calls [Thread.yield] in that way, the running coroutine
-    /// suspends its execution, and the call to [Thread.@"resume"] that started
-    /// this coroutine returns.
+    /// When a [CFunction] calls [Thread.yield] in that way, the running
+    /// coroutine suspends its execution, and the call to [Thread.@"resume"]
+    /// that started this coroutine returns.
     ///
     /// The parameter nresults is the number of values from the stack that are
     /// passed as results to [Thread.@"resume"].
@@ -1042,6 +1347,7 @@ pub const Thread = struct {
     /// This is the same as lua_error.
     pub fn @"error"(self: Self) noreturn {
         _ = c.lua_error(self.lua);
+        unreachable;
     }
 
     /// Pops a key from the stack, and pushes a key-value pair from the table at
@@ -1051,20 +1357,22 @@ pub const Thread = struct {
     ///
     /// A typical traversal looks like this:
     ///
-    ///      /* table is in the stack at index 't' */
-    ///      thread.pushNil();  /* first key */
-    ///      while (thread.next(t)) {
-    ///        /* uses 'key' (at index -2) and 'value' (at index -1) */
-    ///        printf("%s - %s\n",
-    ///               lua_typename(L, lua_type(L, -2)),
-    ///               lua_typename(L, lua_type(L, -1)));
-    ///        /* removes 'value'; keeps 'key' for next iteration */
-    ///        lua_pop(L, 1);
-    ///      }
-    /// While traversing a table, do not call [Thread.toString] directly on a key,
-    /// unless you know that the key is actually a string. Recall that
-    /// [Thread.toString] changes the value at the given index; this confuses the
-    /// next call to [Thread.next].
+    ///     // table is in the stack at index 't'
+    ///     const thread = state.asThread();
+    ///     thread.pushNil(); // first key
+    ///     while (thread.next(t)) {
+    ///         // uses 'key' (at index -2) and 'value' (at index -1)
+    ///         std.debug.print("{s} - {s}\n", .{
+    ///             thread.typeName(thread.valueType(-2).?),
+    ///             thread.typeName(thread.valueType(-1).?),
+    ///         });
+    ///         // removes 'value'; keeps 'key' for next iteration
+    ///         thread.pop(1);
+    ///     }
+    /// While traversing a table, do not call [Thread.toString] directly on a
+    /// key, unless you know that the key is actually a string. Recall that
+    /// [Thread.toString] changes the value at the given index; this confuses
+    /// the next call to [Thread.next].
     ///
     /// This is the same as lua_next.
     pub fn next(self: Self, idx: c_int) bool {
@@ -1108,6 +1416,73 @@ pub const Thread = struct {
     /// This is the same as c.lua_register.
     pub fn register(self: Self, name: [*c]const u8, cfunc: CFunction) void {
         c.lua_register(self.lua, name, cfunc);
+    }
+
+    fn open(self: Self, loader: CFunction) void {
+        self.pushCFunction(loader);
+        self.call(0, 0);
+    }
+
+    /// Opens an loads base library which includes globals such as print and the
+    /// coroutine sub-library.
+    pub fn openBase(self: Self) void {
+        self.open(c.luaopen_base);
+    }
+
+    /// Opens an loads package library.
+    pub fn openPackage(self: Self) void {
+        self.open(c.luaopen_package);
+    }
+
+    /// Opens an loads string library.
+    pub fn openString(self: Self) void {
+        self.open(c.luaopen_string);
+    }
+
+    /// Opens an loads table library.
+    pub fn openTable(self: Self) void {
+        self.open(c.luaopen_table);
+    }
+
+    /// Opens an loads math library.
+    pub fn openMath(self: Self) void {
+        self.open(c.luaopen_math);
+    }
+
+    /// Opens an loads input / output library.
+    pub fn openIO(self: Self) void {
+        self.open(c.luaopen_io);
+    }
+
+    /// Opens an loads OS library.
+    pub fn openOS(self: Self) void {
+        self.open(c.luaopen_os);
+    }
+
+    /// Opens an loads debug library.
+    ///
+    /// This is the same a luaL_openlibs.
+    pub fn openDebug(self: Self) void {
+        self.open(c.luaopen_debug);
+    }
+
+    /// Opens all standard Lua libraries into the given state.
+    ///
+    /// This is the same a luaL_openlibs.
+    pub fn openLibs(self: Self) void {
+        c.luaL_openlibs(self.lua);
+    }
+
+    /// If the registry already has the key `tname`, returns false. Otherwise,
+    /// creates a new table to be used as a metatable for userdata, adds it to
+    /// the registry with key `tname`, and returns true.
+    ///
+    /// In both cases pushes onto the stack the final value associated with
+    /// `tname` in the registry.
+    ///
+    /// This is the same as luaL_newmetatable.
+    pub fn newMetaTable(self: Self, tname: [*c]const u8) bool {
+        return c.luaL_newmetatable(self.lua, tname) != 0;
     }
 };
 
@@ -1164,7 +1539,7 @@ fn callErrorFromInt(code: c_int) CallError!void {
 
 /// ValueType enumerates all Lua type.
 pub const ValueType = enum(c_int) {
-    bool = c.LUA_TBOOLEAN,
+    boolean = c.LUA_TBOOLEAN,
     function = c.LUA_TFUNCTION,
     lightuserdata = c.LUA_TLIGHTUSERDATA,
     nil = c.LUA_TNIL,
@@ -1177,7 +1552,7 @@ pub const ValueType = enum(c_int) {
 
 /// Value is a union over all Lua value types.
 pub const Value = union(ValueType) {
-    bool: bool,
+    boolean: bool,
     function: FunctionRef,
     lightuserdata: *anyopaque,
     nil: void,
@@ -1266,7 +1641,8 @@ pub const FunctionRef = struct {
 pub const CFunction = *const fn (?*c.lua_State) callconv(.c) c_int;
 
 /// The reader function used by Thread.load. Every time it needs another piece
-/// of the chunk, Thread.load calls the reader, passing along its data parameter.
+/// of the chunk, Thread.load calls the reader, passing along its data
+/// parameter.
 /// The reader must return a pointer to a block of memory with a new piece of
 /// the chunk and set size to the block size. The block must exist until the
 /// reader function is called again. To signal the end of the chunk, the reader
@@ -1323,56 +1699,13 @@ fn luaPanic(lua: ?*c.lua_State) callconv(.c) c_int {
     @panic("lua panic");
 }
 
-/// Recoverable panic function called by lua. This should be used in tests only.
-fn recoverableLuaPanic(lua: ?*c.lua_State) callconv(.c) c_int {
-    var len: usize = 0;
-    const str = c.lua_tolstring(lua, -1, &len);
-    if (str != null) {
-        recover.panic.call(str[0..len], @returnAddress());
-    } else recover.panic.call("lua panic", @returnAddress());
-    return 0;
-}
-
-/// Calls Thread.newThread using recover.call. This should be used in tests only.
-fn recoverNewThread(thread: Thread) !Thread {
-    return recover.call(struct {
-        fn newThread(th: Thread) Thread {
-            return th.newThread();
-        }
-    }.newThread, .{thread});
-}
-
-/// Calls Thread.pushAny using recover.call. This should be used in tests only.
-fn recoverPushAny(thread: Thread, value: anytype) !void {
-    return recover.call(struct {
-        fn pushAny(th: Thread, v: anytype) void {
-            return th.pushAny(v);
-        }
-    }.pushAny, .{ thread, value });
-}
-
-/// Calls Thread.pushValue using recover.call. This should be used in tests only.
-fn recoverPushValue(thread: Thread, idx: c_int) !void {
-    return recover.call(struct {
-        fn pushValue(th: Thread, i: c_int) void {
-            return th.pushValue(i);
-        }
-    }.pushValue, .{ thread, idx });
-}
-
-/// Calls Thread.popAny using recover.call. This should be used in tests only.
-fn recoverPopValue(thread: Thread) !?Value {
-    return recover.call(struct {
-        fn popValue(th: Thread) ?Value {
-            return th.popAny(Value);
-        }
-    }.popValue, .{thread});
-}
-
 test "State.init" {
     try testutils.withProgressiveAllocator(struct {
         fn testCase(alloc: *std.mem.Allocator) anyerror!void {
-            var state = try State.init(.{ .allocator = alloc, .panicHandler = null });
+            var state = try State.init(.{
+                .allocator = alloc,
+                .panicHandler = null,
+            });
             state.deinit();
         }
     }.testCase);
@@ -1411,7 +1744,7 @@ test "State.asThread" {
     }.testCase);
 }
 
-test "Thread.pushAny/Thread.popAny/Thread.valueType" {
+test "Thread.pushAnyType/Thread.popAnyType/Thread.valueType" {
     try testutils.withProgressiveAllocator(struct {
         fn testCase(alloc: *std.mem.Allocator) anyerror!void {
             var state = try State.init(.{
@@ -1424,13 +1757,13 @@ test "Thread.pushAny/Thread.popAny/Thread.valueType" {
 
             // Bool.
             {
-                try recoverPushAny(thread, true);
-                try std.testing.expectEqual(thread.valueType(-1), .bool);
-                try std.testing.expectEqual(true, thread.popAny(bool));
+                try recoverPushAnyType(thread, true);
+                try std.testing.expectEqual(thread.valueType(-1), .boolean);
+                try std.testing.expectEqual(true, thread.popAnyType(bool));
 
-                try recoverPushAny(thread, false);
-                try std.testing.expectEqual(thread.valueType(-1), .bool);
-                try std.testing.expectEqual(false, thread.popAny(bool));
+                try recoverPushAnyType(thread, false);
+                try std.testing.expectEqual(thread.valueType(-1), .boolean);
+                try std.testing.expectEqual(false, thread.popAnyType(bool));
             }
 
             // Function.
@@ -1441,60 +1774,60 @@ test "Thread.pushAny/Thread.popAny/Thread.valueType" {
                     }
                 };
 
-                try recoverPushAny(thread, &ns.func);
+                try recoverPushAnyType(thread, &ns.func);
                 try std.testing.expectEqual(thread.valueType(-1), .function);
                 try std.testing.expectEqual(
                     FunctionRef.init(ValueRef.init(thread, thread.top())),
-                    thread.popAny(FunctionRef),
+                    thread.popAnyType(FunctionRef),
                 );
             }
 
             // State / Thread / c.lua_State
             {
-                try recoverPushAny(thread, state);
+                try recoverPushAnyType(thread, state);
                 try std.testing.expectEqual(thread.valueType(-1), .thread);
                 try std.testing.expectEqual(
                     state,
-                    thread.popAny(State),
+                    thread.popAnyType(State),
                 );
 
-                try recoverPushAny(thread, thread);
+                try recoverPushAnyType(thread, thread);
                 try std.testing.expectEqual(thread.valueType(-1), .thread);
                 try std.testing.expectEqual(
                     thread,
-                    thread.popAny(Thread),
+                    thread.popAnyType(Thread),
                 );
 
-                try recoverPushAny(thread, state.lua);
+                try recoverPushAnyType(thread, state.lua);
                 try std.testing.expectEqual(thread.valueType(-1), .thread);
                 try std.testing.expectEqual(
                     state.lua,
-                    thread.popAny(*c.lua_State),
+                    thread.popAnyType(*c.lua_State),
                 );
 
-                try recoverPushAny(thread, thread.lua);
+                try recoverPushAnyType(thread, thread.lua);
                 try std.testing.expectEqual(thread.valueType(-1), .thread);
                 try std.testing.expectEqual(
                     thread,
-                    thread.popAny(Thread),
+                    thread.popAnyType(Thread),
                 );
             }
 
             // Strings.
             {
-                try recoverPushAny(thread, @as([]const u8, "foo bar baz"));
+                try recoverPushAnyType(thread, @as([]const u8, "foo bar baz"));
                 try std.testing.expectEqual(thread.valueType(-1), .string);
                 try std.testing.expectEqualStrings(
                     "foo bar baz",
-                    thread.popAny([]const u8).?,
+                    thread.popAnyType([]const u8).?,
                 );
 
-                try recoverPushAny(thread, @as(f64, 1));
+                try recoverPushAnyType(thread, @as(f64, 1));
                 try std.testing.expectEqualStrings(
                     "1",
-                    (try recover.call(struct {
+                    (try recoverCall(struct {
                         fn popString(th: Thread) ?[]const u8 {
-                            return th.popAny([]const u8);
+                            return th.popAnyType([]const u8);
                         }
                     }.popString, .{thread})).?,
                 );
@@ -1502,49 +1835,188 @@ test "Thread.pushAny/Thread.popAny/Thread.valueType" {
 
             // Floats.
             {
-                try recoverPushAny(thread, @as(f32, 1));
+                try recoverPushAnyType(thread, @as(f32, 1));
                 try std.testing.expectEqual(thread.valueType(-1), .number);
-                try std.testing.expectEqual(1, thread.popAny(f32));
+                try std.testing.expectEqual(1, thread.popAnyType(f32));
 
-                try recoverPushAny(thread, @as(f64, 1));
+                try recoverPushAnyType(thread, @as(f64, 1));
                 try std.testing.expectEqual(thread.valueType(-1), .number);
-                try std.testing.expectEqual(1, thread.popAny(f64));
+                try std.testing.expectEqual(1, thread.popAnyType(f64));
 
-                try recoverPushAny(thread, @as(f32, 1));
+                try recoverPushAnyType(thread, @as(f32, 1));
                 try std.testing.expectEqual(thread.valueType(-1), .number);
-                try std.testing.expectEqual(1, thread.popAny(f64));
+                try std.testing.expectEqual(1, thread.popAnyType(f64));
 
-                try recoverPushAny(thread, @as(f64, 1));
+                try recoverPushAnyType(thread, @as(f64, 1));
                 try std.testing.expectEqual(thread.valueType(-1), .number);
-                try std.testing.expectEqual(1, thread.popAny(f32));
+                try std.testing.expectEqual(1, thread.popAnyType(f32));
             }
 
             // Light userdata.
             {
                 const pi: *anyopaque = @ptrCast(@constCast(&std.math.pi));
-                try recoverPushAny(thread, pi);
-                try std.testing.expectEqual(thread.valueType(-1), .lightuserdata);
-                try std.testing.expectEqual(pi, thread.popAny(*anyopaque).?);
+                try recoverPushAnyType(thread, pi);
+                try std.testing.expectEqual(
+                    thread.valueType(-1),
+                    .lightuserdata,
+                );
+                try std.testing.expectEqual(pi, thread.popAnyType(*anyopaque).?);
             }
 
             // Pointers.
             {
                 const pi: f64 = std.math.pi;
-                try recoverPushAny(thread, pi);
+                try recoverPushAnyType(thread, pi);
                 try std.testing.expectEqual(thread.valueType(-1), .number);
-                try std.testing.expectEqual(pi, thread.popAny(f64));
+                try std.testing.expectEqual(pi, thread.popAnyType(f64));
             }
 
             // Value.
             {
                 const value: Value = .{ .number = std.math.pi };
-                try recoverPushAny(thread, value);
+                try recoverPushAnyType(thread, value);
                 try std.testing.expectEqual(thread.valueType(-1), .number);
-                try std.testing.expectEqual(value, thread.popAny(Value));
+                try std.testing.expectEqual(value, thread.popAnyType(Value));
 
-                try recoverPushAny(thread, value);
+                try recoverPushAnyType(thread, value);
                 try std.testing.expectEqual(thread.valueType(-1), .number);
-                try std.testing.expectEqual(value.number, thread.popAny(f64));
+                try std.testing.expectEqual(value.number, thread.popAnyType(f64));
+            }
+        }
+    }.testCase);
+}
+
+test "Thread.pushZigFunction" {
+    try testutils.withProgressiveAllocator(struct {
+        fn testCase(alloc: *std.mem.Allocator) anyerror!void {
+            var state = try State.init(.{
+                .allocator = alloc,
+                .panicHandler = recoverableLuaPanic,
+            });
+            defer state.deinit();
+
+            const thread = state.asThread();
+
+            const zfunc = struct {
+                pub fn zfunc(a: f64, b: f64) f64 {
+                    return a + b;
+                }
+            }.zfunc;
+
+            thread.pushZigFunction(zfunc);
+            thread.pushInteger(1);
+            thread.pushInteger(2);
+            thread.call(2, 1);
+            try std.testing.expectEqual(3, thread.toInteger(-1));
+
+            // Missing argument.
+            thread.pushZigFunction(zfunc);
+            thread.pushInteger(1);
+            thread.pCall(1, 1, 0) catch {
+                try std.testing.expectEqualStrings(
+                    "bad argument #2 to '?' (number expected, got no value)",
+                    thread.popAnyType([]const u8).?,
+                );
+                return;
+            };
+
+            unreachable;
+        }
+    }.testCase);
+}
+
+test "Thread.error" {
+    try testutils.withProgressiveAllocator(struct {
+        fn testCase(alloc: *std.mem.Allocator) anyerror!void {
+            var state = try State.init(.{
+                .allocator = alloc,
+                .panicHandler = recoverableLuaPanic,
+            });
+            defer state.deinit();
+
+            const thread = state.asThread();
+
+            const zfunc = struct {
+                pub fn zfunc(th: Thread) f64 {
+                    th.pushString("a runtime error");
+                    th.@"error"();
+                }
+            }.zfunc;
+
+            // Missing argument.
+            thread.pushZigFunction(zfunc);
+            _ = thread.pushThread();
+            thread.pCall(1, 0, 0) catch {
+                try std.testing.expectEqualStrings(
+                    "a runtime error",
+                    thread.popAnyType([]const u8).?,
+                );
+                return;
+            };
+
+            unreachable;
+        }
+    }.testCase);
+}
+
+test "Thread.concat" {
+    try testutils.withProgressiveAllocator(struct {
+        fn testCase(alloc: *std.mem.Allocator) anyerror!void {
+            var state = try State.init(.{
+                .allocator = alloc,
+                .panicHandler = recoverableLuaPanic,
+            });
+            defer state.deinit();
+
+            const thread = state.asThread();
+
+            thread.pushInteger(100);
+            thread.pushString(" foo");
+            thread.concat(2);
+            try std.testing.expectEqualStrings(
+                "100 foo",
+                thread.popAnyType([]const u8).?,
+            );
+        }
+    }.testCase);
+}
+
+test "Thread.next" {
+    try testutils.withProgressiveAllocator(struct {
+        fn testCase(alloc: *std.mem.Allocator) anyerror!void {
+            var state = try State.init(.{
+                .allocator = alloc,
+                .panicHandler = recoverableLuaPanic,
+            });
+            defer state.deinit();
+
+            const thread = state.asThread();
+
+            thread.newTable();
+            const idx = thread.top();
+
+            thread.pushInteger(1);
+            thread.rawSeti(idx, 1);
+
+            thread.pushInteger(2);
+            thread.rawSeti(idx, 2);
+
+            thread.pushInteger(3);
+            thread.rawSeti(idx, 3);
+
+            var i: Integer = 0;
+            thread.pushNil(); // first key
+            while (thread.next(idx)) {
+                i += 1;
+                try std.testing.expectEqual(
+                    i,
+                    // removes 'value'; keeps 'key' for next iteration
+                    thread.popAnyType(Integer),
+                );
+                try std.testing.expectEqual(
+                    i,
+                    thread.toAnyType(Integer, -1),
+                );
             }
         }
     }.testCase);
@@ -1579,10 +2051,10 @@ test "Thread.pushValue" {
 
             const thread = state.asThread();
 
-            try recoverPushAny(thread, @as(f64, std.math.pi));
+            try recoverPushAnyType(thread, @as(f64, std.math.pi));
             try std.testing.expectEqual(1, thread.top());
 
-            try recoverPushAny(thread, @as([]const u8, "foo bar baz"));
+            try recoverPushAnyType(thread, @as([]const u8, "foo bar baz"));
             try std.testing.expectEqual(2, thread.top());
 
             try recoverPushValue(thread, -2);
@@ -1590,15 +2062,15 @@ test "Thread.pushValue" {
 
             try std.testing.expectEqual(
                 @as(f64, std.math.pi),
-                thread.popAny(f64),
+                thread.popAnyType(f64),
             );
             try std.testing.expectEqualStrings(
                 @as([]const u8, "foo bar baz"),
-                thread.popAny([]const u8).?,
+                thread.popAnyType([]const u8).?,
             );
             try std.testing.expectEqual(
                 @as(f64, std.math.pi),
-                thread.popAny(f64),
+                thread.popAnyType(f64),
             );
             try std.testing.expectEqual(0, thread.top());
         }
@@ -1616,17 +2088,17 @@ test "Thread.remove" {
 
             const thread = state.asThread();
 
-            try recoverPushAny(thread, @as(f64, std.math.pi));
+            try recoverPushAnyType(thread, @as(f64, std.math.pi));
             try std.testing.expectEqual(1, thread.top());
 
-            try recoverPushAny(thread, @as([]const u8, "foo bar baz"));
+            try recoverPushAnyType(thread, @as([]const u8, "foo bar baz"));
             try std.testing.expectEqual(2, thread.top());
 
             thread.remove(1);
 
             try std.testing.expectEqualStrings(
                 @as([]const u8, "foo bar baz"),
-                thread.popAny([]const u8).?,
+                thread.popAnyType([]const u8).?,
             );
             try std.testing.expectEqual(0, thread.top());
         }
@@ -1644,17 +2116,17 @@ test "Thread.insert" {
 
             const thread = state.asThread();
 
-            try recoverPushAny(thread, @as(f64, std.math.pi));
+            try recoverPushAnyType(thread, @as(f64, std.math.pi));
             try std.testing.expectEqual(1, thread.top());
 
-            try recoverPushAny(thread, @as([]const u8, "foo bar baz"));
+            try recoverPushAnyType(thread, @as([]const u8, "foo bar baz"));
             try std.testing.expectEqual(2, thread.top());
 
             thread.insert(1);
 
             try std.testing.expectEqual(
                 @as(f64, std.math.pi),
-                thread.popAny(f64),
+                thread.popAnyType(f64),
             );
             try std.testing.expectEqual(1, thread.top());
         }
@@ -1672,17 +2144,17 @@ test "Thread.replace" {
 
             const thread = state.asThread();
 
-            try recoverPushAny(thread, @as(f64, std.math.pi));
+            try recoverPushAnyType(thread, @as(f64, std.math.pi));
             try std.testing.expectEqual(1, thread.top());
 
-            try recoverPushAny(thread, @as([]const u8, "foo bar baz"));
+            try recoverPushAnyType(thread, @as([]const u8, "foo bar baz"));
             try std.testing.expectEqual(2, thread.top());
 
             thread.replace(1);
 
             try std.testing.expectEqualStrings(
                 @as([]const u8, "foo bar baz"),
-                thread.popAny([]const u8).?,
+                thread.popAnyType([]const u8).?,
             );
             try std.testing.expectEqual(0, thread.top());
         }
@@ -1718,12 +2190,12 @@ test "Thread.xMove" {
             const thread = state.asThread();
             const thread2 = try recoverNewThread(thread);
 
-            try recoverPushAny(thread, @as([]const u8, "foo bar baz"));
+            try recoverPushAnyType(thread, @as([]const u8, "foo bar baz"));
             thread.xMove(thread2, 1);
 
             try std.testing.expectEqualStrings(
                 @as([]const u8, "foo bar baz"),
-                thread2.popAny([]const u8).?,
+                thread2.popAnyType([]const u8).?,
             );
             try std.testing.expectEqual(0, thread2.top());
             try std.testing.expectEqual(1, thread.top());
@@ -1742,8 +2214,8 @@ test "Thread.equal" {
 
             const thread = state.asThread();
 
-            thread.pushAny(@as(f64, 1));
-            thread.pushAny(@as(f64, 2));
+            thread.pushAnyType(@as(f64, 1));
+            thread.pushAnyType(@as(f64, 2));
 
             try std.testing.expect(!thread.equal(1, 2));
             try std.testing.expect(thread.equal(1, 1));
@@ -1763,8 +2235,8 @@ test "Thread.rawEqual" {
 
             const thread = state.asThread();
 
-            thread.pushAny(@as(f64, 1));
-            thread.pushAny(@as(f64, 2));
+            thread.pushAnyType(@as(f64, 1));
+            thread.pushAnyType(@as(f64, 2));
 
             try std.testing.expect(!thread.rawEqual(1, 2));
             try std.testing.expect(thread.rawEqual(1, 1));
@@ -1784,13 +2256,283 @@ test "Thread.lessThan" {
 
             const thread = state.asThread();
 
-            thread.pushAny(@as(f64, 1));
-            thread.pushAny(@as(f64, 2));
+            thread.pushAnyType(@as(f64, 1));
+            thread.pushAnyType(@as(f64, 2));
 
             try std.testing.expect(thread.lessThan(1, 2));
             try std.testing.expect(!thread.lessThan(2, 1));
             try std.testing.expect(!thread.lessThan(1, 1));
             try std.testing.expect(!thread.lessThan(2, 2));
+        }
+    }.testCase);
+}
+
+test "Thread.valueType" {
+    try testutils.withProgressiveAllocator(struct {
+        fn testCase(alloc: *std.mem.Allocator) anyerror!void {
+            var state = try State.init(.{
+                .allocator = alloc,
+                .panicHandler = recoverableLuaPanic,
+            });
+            defer state.deinit();
+
+            const thread = state.asThread();
+
+            thread.pushAnyType(@as(f64, 3.14));
+            try std.testing.expectEqual(
+                .number,
+                thread.valueType(1),
+            );
+            try recoverPushAnyType(thread, @as([]const u8, "foo bar baz"));
+            try std.testing.expectEqual(
+                .string,
+                thread.valueType(2),
+            );
+        }
+    }.testCase);
+}
+
+test "Thread.typeName" {
+    try testutils.withProgressiveAllocator(struct {
+        fn testCase(alloc: *std.mem.Allocator) anyerror!void {
+            var state = try State.init(.{
+                .allocator = alloc,
+                .panicHandler = recoverableLuaPanic,
+            });
+            defer state.deinit();
+
+            const thread = state.asThread();
+
+            try std.testing.expectEqualStrings(
+                "boolean",
+                std.mem.span(thread.typeName(.boolean)),
+            );
+            try std.testing.expectEqualStrings(
+                "number",
+                std.mem.span(thread.typeName(.number)),
+            );
+            try std.testing.expectEqualStrings(
+                "function",
+                std.mem.span(thread.typeName(.function)),
+            );
+            try std.testing.expectEqualStrings(
+                "string",
+                std.mem.span(thread.typeName(.string)),
+            );
+        }
+    }.testCase);
+}
+
+test "Thread.getGlobal" {
+    try testutils.withProgressiveAllocator(struct {
+        fn testCase(alloc: *std.mem.Allocator) anyerror!void {
+            var state = try State.init(.{
+                .allocator = alloc,
+                .panicHandler = recoverableLuaPanic,
+            });
+            defer state.deinit();
+
+            const thread = state.asThread();
+
+            try recoverCall(struct {
+                fn func(th: Thread) void {
+                    th.getGlobal("_G");
+                    th.getGlobal("_G");
+                }
+            }.func, .{thread});
+            try std.testing.expect(thread.equal(-1, -2));
+        }
+    }.testCase);
+}
+
+test "Thread.getGlobalAny" {
+    try testutils.withProgressiveAllocator(struct {
+        fn testCase(alloc: *std.mem.Allocator) anyerror!void {
+            var state = try State.init(.{
+                .allocator = alloc,
+                .panicHandler = recoverableLuaPanic,
+            });
+            defer state.deinit();
+
+            const thread = state.asThread();
+            try recoverOpenBase(thread);
+
+            const value = try recoverGetGlobalAny(thread, "_G");
+            _ = value.?.table;
+        }
+    }.testCase);
+}
+
+test "Thread.setGlobalAny" {
+    try testutils.withProgressiveAllocator(struct {
+        fn testCase(alloc: *std.mem.Allocator) anyerror!void {
+            var state = try State.init(.{
+                .allocator = alloc,
+                .panicHandler = recoverableLuaPanic,
+            });
+            defer state.deinit();
+
+            const thread = state.asThread();
+            try recoverOpenBase(thread);
+
+            var value = try recoverGetGlobalAny(thread, "_G");
+            _ = value.?.table;
+
+            thread.setGlobalAny("_G", @as(f32, 1));
+
+            value = try recoverGetGlobalAny(thread, "_G");
+            _ = value.?.number;
+        }
+    }.testCase);
+}
+
+test "Thread.isXXX" {
+    try testutils.withProgressiveAllocator(struct {
+        fn testCase(alloc: *std.mem.Allocator) anyerror!void {
+            var state = try State.init(.{
+                .allocator = alloc,
+                .panicHandler = recoverableLuaPanic,
+            });
+            defer state.deinit();
+
+            const thread = state.asThread();
+            try recoverOpenBase(thread);
+
+            try std.testing.expect(!thread.isBoolean(Global));
+            try std.testing.expect(!thread.isCFunction(Global));
+            try std.testing.expect(!thread.isFunction(Global));
+            try std.testing.expect(!thread.isNil(Global));
+            try std.testing.expect(!thread.isNone(Global));
+            try std.testing.expect(!thread.isNoneOrNil(Global));
+            try std.testing.expect(!thread.isNumber(Global));
+            try std.testing.expect(thread.isTable(Global));
+            try std.testing.expect(!thread.isThread(Global));
+            try std.testing.expect(!thread.isUserData(Global));
+            try std.testing.expect(!thread.isLightUserData(Global));
+        }
+    }.testCase);
+}
+
+test "Thread.toXXX" {
+    try testutils.withProgressiveAllocator(struct {
+        fn testCase(alloc: *std.mem.Allocator) anyerror!void {
+            var state = try State.init(.{
+                .allocator = alloc,
+                .panicHandler = recoverableLuaPanic,
+            });
+            defer state.deinit();
+
+            const thread = state.asThread();
+            try recoverOpenBase(thread);
+
+            try std.testing.expect(thread.toBoolean(Global));
+            try std.testing.expect(thread.toCFunction(Global) == null);
+            try std.testing.expect(thread.toNumber(Global) == 0);
+            try std.testing.expect(thread.toThread(Global) == null);
+            try std.testing.expect(thread.toUserData(Global) == null);
+            try std.testing.expect(thread.toPointer(Global) != null);
+            try std.testing.expect(thread.toString(Global) == null);
+        }
+    }.testCase);
+}
+
+test "Thread.objLen" {
+    try testutils.withProgressiveAllocator(struct {
+        fn testCase(alloc: *std.mem.Allocator) anyerror!void {
+            var state = try State.init(.{
+                .allocator = alloc,
+                .panicHandler = recoverableLuaPanic,
+            });
+            defer state.deinit();
+
+            const thread = state.asThread();
+
+            try recoverPushAnyType(thread, @as([]const u8, "foo bar baz"));
+            try std.testing.expectEqual(
+                11,
+                thread.objLen(-1),
+            );
+        }
+    }.testCase);
+}
+
+test "Thread.openLibs" {
+    try testutils.withProgressiveAllocator(struct {
+        fn testCase(alloc: *std.mem.Allocator) anyerror!void {
+            var state = try State.init(.{
+                .allocator = alloc,
+                .panicHandler = recoverableLuaPanic,
+            });
+            defer state.deinit();
+
+            const thread = state.asThread();
+
+            try std.testing.expect(
+                try recoverGetGlobalAny(thread, "_G") == null,
+            );
+            try std.testing.expect(
+                try recoverGetGlobalAny(thread, "coroutine") == null,
+            );
+            try recoverCall(struct {
+                fn func(th: Thread) void {
+                    th.openBase();
+                }
+            }.func, .{thread});
+            try std.testing.expect(
+                try recoverGetGlobalAny(thread, "_G") != null,
+            );
+            try std.testing.expect(
+                try recoverGetGlobalAny(thread, "coroutine") != null,
+            );
+
+            try std.testing.expect(
+                try recoverGetGlobalAny(thread, "package") == null,
+            );
+            try std.testing.expect(
+                try recoverGetGlobalAny(thread, "table") == null,
+            );
+            try std.testing.expect(
+                try recoverGetGlobalAny(thread, "string") == null,
+            );
+            try std.testing.expect(
+                try recoverGetGlobalAny(thread, "io") == null,
+            );
+            try std.testing.expect(
+                try recoverGetGlobalAny(thread, "os") == null,
+            );
+            try std.testing.expect(
+                try recoverGetGlobalAny(thread, "math") == null,
+            );
+            try std.testing.expect(
+                try recoverGetGlobalAny(thread, "debug") == null,
+            );
+            try recoverCall(struct {
+                fn func(th: Thread) void {
+                    th.openLibs();
+                }
+            }.func, .{thread});
+
+            try std.testing.expect(
+                try recoverGetGlobalAny(thread, "package") != null,
+            );
+            try std.testing.expect(
+                try recoverGetGlobalAny(thread, "table") != null,
+            );
+            try std.testing.expect(
+                try recoverGetGlobalAny(thread, "string") != null,
+            );
+            try std.testing.expect(
+                try recoverGetGlobalAny(thread, "io") != null,
+            );
+            try std.testing.expect(
+                try recoverGetGlobalAny(thread, "os") != null,
+            );
+            try std.testing.expect(
+                try recoverGetGlobalAny(thread, "math") != null,
+            );
+            try std.testing.expect(
+                try recoverGetGlobalAny(thread, "debug") != null,
+            );
         }
     }.testCase);
 }
