@@ -13,30 +13,22 @@ pub const recoverCall = recover.call;
 pub fn withProgressiveAllocator(tcase: fn (*std.mem.Allocator) anyerror!void) !void {
     std.debug.assert(builtin.is_test);
 
-    const tries = 8192;
+    var palloc = ProgressiveAllocator.init();
+    var alloc = palloc.allocator();
+    defer palloc.deinit();
 
-    var memory_limit: usize = 0;
-    for (0..tries) |_| {
-        var dbgAlloc = std.heap.DebugAllocator(.{
-            .enable_memory_limit = true,
-        }).init;
-        dbgAlloc.requested_memory_limit = memory_limit;
-
-        var alloc = dbgAlloc.allocator();
+    while (true) {
         tcase(&alloc) catch |err| {
             if (err == std.mem.Allocator.Error.OutOfMemory or err == error.Panic) {
-                memory_limit += @sizeOf(usize);
+                palloc.progress();
                 continue;
             }
 
             return err;
         };
 
-        return;
+        break;
     }
-
-    std.debug.print("progressive memory allocator failed after {} tries\n", .{tries});
-    return error.ProgressiveAllocatorError;
 }
 
 /// Recoverable panic function called by lua. This should be used in tests only.
@@ -51,67 +43,120 @@ pub fn recoverableLuaPanic(lua: ?*c.lua_State) callconv(.c) c_int {
     return 0;
 }
 
-/// Calls Thread.newThread using recover.call. This should be used in tests only.
-pub fn recoverNewThread(thread: Thread) !Thread {
+pub fn recoverGetGlobalValue(thread: Thread, name: [*c]const u8) !?Value {
     std.debug.assert(builtin.is_test);
 
     return recover.call(struct {
-        fn newThread(th: Thread) Thread {
-            return th.newThread();
+        fn getGlobalAnyType(th: Thread, n: [*c]const u8) ?Value {
+            return th.getGlobalAnyType(n, Value);
         }
-    }.newThread, .{thread});
+    }.getGlobalAnyType, .{ thread, name });
 }
 
-/// Calls Thread.pushAnyType using recover.call. This should be used in tests only.
-pub fn recoverPushAnyType(thread: Thread, value: anytype) !void {
-    std.debug.assert(builtin.is_test);
+/// ProgressiveAllocator is a wrapper around [std.heap.DebugAllocator] that
+/// tracks requested memory. This enables progressively incrementing memory
+/// limit until a test succeed.
+const ProgressiveAllocator = struct {
+    const Self = @This();
 
-    return recover.call(struct {
-        fn pushAnyType(th: Thread, v: anytype) void {
-            return th.pushAnyType(v);
-        }
-    }.pushAnyType, .{ thread, value });
-}
+    dbg: std.heap.DebugAllocator(.{ .enable_memory_limit = true }),
+    requested: usize = 0,
 
-/// Calls Thread.pushValue using recover.call. This should be used in tests only.
-pub fn recoverPushValue(thread: Thread, idx: c_int) !void {
-    std.debug.assert(builtin.is_test);
+    pub fn init() Self {
+        var dbg =
+            std.heap.DebugAllocator(.{ .enable_memory_limit = true }).init;
+        dbg.requested_memory_limit = 0;
+        return .{ .dbg = dbg };
+    }
 
-    return recover.call(struct {
-        fn pushValue(th: Thread, i: c_int) void {
-            return th.pushValue(i);
-        }
-    }.pushValue, .{ thread, idx });
-}
+    pub fn deinit(self: *Self) void {
+        _ = self.dbg.detectLeaks();
+        _ = self.dbg.deinit();
+    }
 
-/// Calls Thread.popAny using recover.call. This should be used in tests only.
-pub fn recoverPopValue(thread: Thread) !?Value {
-    std.debug.assert(builtin.is_test);
+    pub fn allocator(self: *Self) std.mem.Allocator {
+        return .{
+            .ptr = @ptrCast(self),
+            .vtable = &.{
+                .alloc = alloc,
+                .resize = resize,
+                .remap = remap,
+                .free = free,
+            },
+        };
+    }
 
-    return recover.call(struct {
-        fn popValue(th: Thread) ?Value {
-            return th.popAny(Value);
-        }
-    }.popValue, .{thread});
-}
+    pub fn progress(self: *Self) void {
+        _ = self.dbg.deinit();
+        self.dbg =
+            std.heap.DebugAllocator(.{ .enable_memory_limit = true }).init;
+        self.dbg.requested_memory_limit = self.requested;
+        self.requested = 0;
+    }
 
-/// Calls Thread.openBase using recover.call. This should be used in tests only.
-pub fn recoverOpenBase(thread: Thread) !void {
-    std.debug.assert(builtin.is_test);
+    pub fn alloc(
+        ptr: *anyopaque,
+        len: usize,
+        alignment: std.mem.Alignment,
+        ret_addr: usize,
+    ) ?[*]u8 {
+        const self: *Self = @ptrCast(@alignCast(ptr));
+        self.requested += len;
 
-    return recover.call(struct {
-        fn openBase(th: Thread) void {
-            return th.openBase();
-        }
-    }.openBase, .{thread});
-}
+        const dalloc = self.dbg.allocator();
+        return dalloc.rawAlloc(len, alignment, ret_addr);
+    }
 
-pub fn recoverGetGlobalAny(thread: Thread, name: [*c]const u8) !?Value {
-    std.debug.assert(builtin.is_test);
+    pub fn resize(
+        ptr: *anyopaque,
+        memory: []u8,
+        alignment: std.mem.Alignment,
+        new_len: usize,
+        ret_addr: usize,
+    ) bool {
+        const self: *Self = @ptrCast(@alignCast(ptr));
+        self.requested += new_len - memory.len;
 
-    return recover.call(struct {
-        fn getGlobalAny(th: Thread, n: [*c]const u8) ?Value {
-            return th.getGlobalAny(n, Value);
-        }
-    }.getGlobalAny, .{ thread, name });
-}
+        const dalloc = self.dbg.allocator();
+        return dalloc.rawResize(
+            memory,
+            alignment,
+            new_len,
+            ret_addr,
+        );
+    }
+
+    pub fn remap(
+        ptr: *anyopaque,
+        memory: []u8,
+        alignment: std.mem.Alignment,
+        new_len: usize,
+        ret_addr: usize,
+    ) ?[*]u8 {
+        const self: *Self = @ptrCast(@alignCast(ptr));
+        self.requested += new_len - memory.len;
+
+        const dalloc = self.dbg.allocator();
+        return dalloc.rawRemap(
+            memory,
+            alignment,
+            new_len,
+            ret_addr,
+        );
+    }
+
+    pub fn free(
+        ptr: *anyopaque,
+        memory: []u8,
+        alignment: std.mem.Alignment,
+        ret_addr: usize,
+    ) void {
+        const self: *Self = @ptrCast(@alignCast(ptr));
+        const dalloc = self.dbg.allocator();
+        return dalloc.rawFree(
+            memory,
+            alignment,
+            ret_addr,
+        );
+    }
+};

@@ -9,12 +9,7 @@ const c = @import("./c.zig").c;
 
 const testutils = @import("./testutils.zig");
 const recoverCall = testutils.recoverCall;
-const recoverGetGlobalAny = testutils.recoverGetGlobalAny;
-const recoverNewThread = testutils.recoverNewThread;
-const recoverOpenBase = testutils.recoverOpenBase;
-const recoverPopValue = testutils.recoverPopValue;
-const recoverPushAnyType = testutils.recoverPushAnyType;
-const recoverPushValue = testutils.recoverPushValue;
+const recoverGetGlobalValue = testutils.recoverGetGlobalValue;
 const recoverableLuaPanic = testutils.recoverableLuaPanic;
 
 /// State is a wrapper around [c.lua_State] and more precisely around main
@@ -203,8 +198,8 @@ pub const Thread = struct {
         c.lua_getglobal(self.lua, name);
     }
 
-    /// Gets value of the global `name` and returns it.
-    pub fn getGlobalAny(self: Self, name: [*c]const u8, comptime T: type) ?T {
+    /// Gets value of the global `name`, pops and returns it.
+    pub fn getGlobalAnyType(self: Self, name: [*c]const u8, comptime T: type) ?T {
         const currentTop = self.top();
         c.lua_getglobal(self.lua, name);
         if (currentTop == self.top()) return null;
@@ -220,7 +215,7 @@ pub const Thread = struct {
     }
 
     /// Sets provided value as the new value of global `name`.
-    pub fn setGlobalAny(self: Self, name: [*c]const u8, value: anytype) void {
+    pub fn setGlobalAnyType(self: Self, name: [*c]const u8, value: anytype) void {
         self.pushAnyType(value);
         self.setGlobal(name);
     }
@@ -1817,7 +1812,7 @@ test "Thread.newThread" {
             });
             defer state.deinit();
 
-            const thread = try recoverNewThread(state.asThread());
+            const thread = try recoverCall(Thread.newThread, .{state.asThread()});
             try std.testing.expect(!thread.isMain());
             try std.testing.expectEqual(null, thread.asState());
             try std.testing.expectEqual(0, thread.top());
@@ -1854,11 +1849,11 @@ test "Thread.pushAnyType/Thread.popAnyType/Thread.valueType" {
 
             // Bool.
             {
-                try recoverPushAnyType(thread, true);
+                try recoverCall(Thread.pushAnyType, .{ thread, true });
                 try std.testing.expectEqual(thread.valueType(-1), .boolean);
                 try std.testing.expectEqual(true, thread.popAnyType(bool));
 
-                try recoverPushAnyType(thread, false);
+                try recoverCall(Thread.pushAnyType, .{ thread, false });
                 try std.testing.expectEqual(thread.valueType(-1), .boolean);
                 try std.testing.expectEqual(false, thread.popAnyType(bool));
             }
@@ -1871,7 +1866,7 @@ test "Thread.pushAnyType/Thread.popAnyType/Thread.valueType" {
                     }
                 };
 
-                try recoverPushAnyType(thread, &ns.func);
+                try recoverCall(Thread.pushAnyType, .{ thread, &ns.func });
                 try std.testing.expectEqual(thread.valueType(-1), .function);
                 try std.testing.expectEqual(
                     FunctionRef.init(ValueRef.init(thread, thread.top())),
@@ -1881,28 +1876,28 @@ test "Thread.pushAnyType/Thread.popAnyType/Thread.valueType" {
 
             // State / Thread / c.lua_State
             {
-                try recoverPushAnyType(thread, state);
+                try recoverCall(Thread.pushAnyType, .{ thread, state });
                 try std.testing.expectEqual(thread.valueType(-1), .thread);
                 try std.testing.expectEqual(
                     state,
                     thread.popAnyType(State),
                 );
 
-                try recoverPushAnyType(thread, thread);
+                try recoverCall(Thread.pushAnyType, .{ thread, thread });
                 try std.testing.expectEqual(thread.valueType(-1), .thread);
                 try std.testing.expectEqual(
                     thread,
                     thread.popAnyType(Thread),
                 );
 
-                try recoverPushAnyType(thread, state.lua);
+                try recoverCall(Thread.pushAnyType, .{ thread, state.lua });
                 try std.testing.expectEqual(thread.valueType(-1), .thread);
                 try std.testing.expectEqual(
                     state.lua,
                     thread.popAnyType(*c.lua_State),
                 );
 
-                try recoverPushAnyType(thread, thread.lua);
+                try recoverCall(Thread.pushAnyType, .{ thread, thread.lua });
                 try std.testing.expectEqual(thread.valueType(-1), .thread);
                 try std.testing.expectEqual(
                     thread,
@@ -1912,14 +1907,16 @@ test "Thread.pushAnyType/Thread.popAnyType/Thread.valueType" {
 
             // Strings.
             {
-                try recoverPushAnyType(thread, @as([]const u8, "foo bar baz"));
+                try recoverCall(Thread.pushAnyType, .{
+                    thread, @as([]const u8, "foo bar baz"),
+                });
                 try std.testing.expectEqual(thread.valueType(-1), .string);
                 try std.testing.expectEqualStrings(
                     "foo bar baz",
                     thread.popAnyType([]const u8).?,
                 );
 
-                try recoverPushAnyType(thread, @as(f64, 1));
+                try recoverCall(Thread.pushAnyType, .{ thread, @as(f64, 1) });
                 try std.testing.expectEqualStrings(
                     "1",
                     (try recoverCall(struct {
@@ -1932,19 +1929,19 @@ test "Thread.pushAnyType/Thread.popAnyType/Thread.valueType" {
 
             // Floats.
             {
-                try recoverPushAnyType(thread, @as(f32, 1));
+                try recoverCall(Thread.pushAnyType, .{ thread, @as(f32, 1) });
                 try std.testing.expectEqual(thread.valueType(-1), .number);
                 try std.testing.expectEqual(1, thread.popAnyType(f32));
 
-                try recoverPushAnyType(thread, @as(f64, 1));
+                try recoverCall(Thread.pushAnyType, .{ thread, @as(f64, 1) });
                 try std.testing.expectEqual(thread.valueType(-1), .number);
                 try std.testing.expectEqual(1, thread.popAnyType(f64));
 
-                try recoverPushAnyType(thread, @as(f32, 1));
+                try recoverCall(Thread.pushAnyType, .{ thread, @as(f32, 1) });
                 try std.testing.expectEqual(thread.valueType(-1), .number);
                 try std.testing.expectEqual(1, thread.popAnyType(f64));
 
-                try recoverPushAnyType(thread, @as(f64, 1));
+                try recoverCall(Thread.pushAnyType, .{ thread, @as(f64, 1) });
                 try std.testing.expectEqual(thread.valueType(-1), .number);
                 try std.testing.expectEqual(1, thread.popAnyType(f32));
             }
@@ -1952,7 +1949,7 @@ test "Thread.pushAnyType/Thread.popAnyType/Thread.valueType" {
             // Light userdata.
             {
                 const pi: *anyopaque = @ptrCast(@constCast(&std.math.pi));
-                try recoverPushAnyType(thread, pi);
+                try recoverCall(Thread.pushAnyType, .{ thread, pi });
                 try std.testing.expectEqual(
                     thread.valueType(-1),
                     .lightuserdata,
@@ -1963,7 +1960,7 @@ test "Thread.pushAnyType/Thread.popAnyType/Thread.valueType" {
             // Pointers.
             {
                 const pi: f64 = std.math.pi;
-                try recoverPushAnyType(thread, pi);
+                try recoverCall(Thread.pushAnyType, .{ thread, pi });
                 try std.testing.expectEqual(thread.valueType(-1), .number);
                 try std.testing.expectEqual(pi, thread.popAnyType(f64));
             }
@@ -1971,11 +1968,11 @@ test "Thread.pushAnyType/Thread.popAnyType/Thread.valueType" {
             // Value.
             {
                 const value: Value = .{ .number = std.math.pi };
-                try recoverPushAnyType(thread, value);
+                try recoverCall(Thread.pushAnyType, .{ thread, value });
                 try std.testing.expectEqual(thread.valueType(-1), .number);
                 try std.testing.expectEqual(value, thread.popAnyType(Value));
 
-                try recoverPushAnyType(thread, value);
+                try recoverCall(Thread.pushAnyType, .{ thread, value });
                 try std.testing.expectEqual(thread.valueType(-1), .number);
                 try std.testing.expectEqual(value.number, thread.popAnyType(f64));
             }
@@ -1984,76 +1981,62 @@ test "Thread.pushAnyType/Thread.popAnyType/Thread.valueType" {
 }
 
 test "Thread.pushZigFunction" {
-    try testutils.withProgressiveAllocator(struct {
-        fn testCase(alloc: *std.mem.Allocator) anyerror!void {
-            var state = try State.init(.{
-                .allocator = alloc,
-                .panicHandler = recoverableLuaPanic,
-            });
-            defer state.deinit();
+    var state = try State.init(.{});
+    defer state.deinit();
 
-            const thread = state.asThread();
+    const thread = state.asThread();
 
-            const zfunc = struct {
-                pub fn zfunc(a: f64, b: f64) f64 {
-                    return a + b;
-                }
-            }.zfunc;
-
-            thread.pushZigFunction(zfunc);
-            thread.pushInteger(1);
-            thread.pushInteger(2);
-            thread.call(2, 1);
-            try std.testing.expectEqual(3, thread.toInteger(-1));
-
-            // Missing argument.
-            thread.pushZigFunction(zfunc);
-            thread.pushInteger(1);
-            thread.pCall(1, 1, 0) catch {
-                try std.testing.expectEqualStrings(
-                    "bad argument #2 to '?' (number expected, got no value)",
-                    thread.popAnyType([]const u8).?,
-                );
-                return;
-            };
-
-            unreachable;
+    const zfunc = struct {
+        pub fn zfunc(a: f64, b: f64) f64 {
+            return a + b;
         }
-    }.testCase);
+    }.zfunc;
+
+    thread.pushZigFunction(zfunc);
+    thread.pushInteger(1);
+    thread.pushInteger(2);
+    thread.call(2, 1);
+    try std.testing.expectEqual(3, thread.toInteger(-1));
+
+    // Missing argument.
+    thread.pushZigFunction(zfunc);
+    thread.pushInteger(1);
+    thread.pCall(1, 1, 0) catch {
+        try std.testing.expectEqualStrings(
+            "bad argument #2 to '?' (number expected, got no value)",
+            thread.popAnyType([]const u8).?,
+        );
+        return;
+    };
+
+    unreachable;
 }
 
 test "Thread.error" {
-    try testutils.withProgressiveAllocator(struct {
-        fn testCase(alloc: *std.mem.Allocator) anyerror!void {
-            var state = try State.init(.{
-                .allocator = alloc,
-                .panicHandler = recoverableLuaPanic,
-            });
-            defer state.deinit();
+    var state = try State.init(.{});
+    defer state.deinit();
 
-            const thread = state.asThread();
+    const thread = state.asThread();
 
-            const zfunc = struct {
-                pub fn zfunc(th: Thread) f64 {
-                    th.pushString("a runtime error");
-                    th.@"error"();
-                }
-            }.zfunc;
-
-            // Missing argument.
-            thread.pushZigFunction(zfunc);
-            _ = thread.pushThread();
-            thread.pCall(1, 0, 0) catch {
-                try std.testing.expectEqualStrings(
-                    "a runtime error",
-                    thread.popAnyType([]const u8).?,
-                );
-                return;
-            };
-
-            unreachable;
+    const zfunc = struct {
+        pub fn zfunc(th: Thread) f64 {
+            th.pushString("a runtime error");
+            th.@"error"();
         }
-    }.testCase);
+    }.zfunc;
+
+    // Missing argument.
+    thread.pushZigFunction(zfunc);
+    _ = thread.pushThread();
+    thread.pCall(1, 0, 0) catch {
+        try std.testing.expectEqualStrings(
+            "a runtime error",
+            thread.popAnyType([]const u8).?,
+        );
+        return;
+    };
+
+    unreachable;
 }
 
 test "Thread.concat" {
@@ -2067,9 +2050,9 @@ test "Thread.concat" {
 
             const thread = state.asThread();
 
-            thread.pushInteger(100);
-            thread.pushString(" foo");
-            thread.concat(2);
+            try recoverCall(Thread.pushNumber, .{ thread, 100 });
+            try recoverCall(Thread.pushString, .{ thread, " foo" });
+            try recoverCall(Thread.concat, .{ thread, 2 });
             try std.testing.expectEqualStrings(
                 "100 foo",
                 thread.popAnyType([]const u8).?,
@@ -2089,17 +2072,17 @@ test "Thread.next" {
 
             const thread = state.asThread();
 
-            thread.newTable();
+            try recoverCall(Thread.newTable, .{thread});
             const idx = thread.top();
 
-            thread.pushInteger(1);
-            thread.rawSeti(idx, 1);
+            try recoverCall(Thread.pushInteger, .{ thread, 1 });
+            try recoverCall(Thread.rawSeti, .{ thread, idx, 1 });
 
-            thread.pushInteger(2);
-            thread.rawSeti(idx, 2);
+            try recoverCall(Thread.pushInteger, .{ thread, 2 });
+            try recoverCall(Thread.rawSeti, .{ thread, idx, 2 });
 
-            thread.pushInteger(3);
-            thread.rawSeti(idx, 3);
+            try recoverCall(Thread.pushInteger, .{ thread, 3 });
+            try recoverCall(Thread.rawSeti, .{ thread, idx, 3 });
 
             var i: Integer = 0;
             thread.pushNil(); // first key
@@ -2115,6 +2098,8 @@ test "Thread.next" {
                     thread.toAnyType(Integer, -1),
                 );
             }
+
+            try std.testing.expectEqual(3, i);
         }
     }.testCase);
 }
@@ -2148,13 +2133,19 @@ test "Thread.pushValue" {
 
             const thread = state.asThread();
 
-            try recoverPushAnyType(thread, @as(f64, std.math.pi));
+            try recoverCall(Thread.pushAnyType, .{
+                thread,
+                @as(f64, std.math.pi),
+            });
             try std.testing.expectEqual(1, thread.top());
 
-            try recoverPushAnyType(thread, @as([]const u8, "foo bar baz"));
+            try recoverCall(Thread.pushAnyType, .{
+                thread,
+                @as([]const u8, "foo bar baz"),
+            });
             try std.testing.expectEqual(2, thread.top());
 
-            try recoverPushValue(thread, -2);
+            try recoverCall(Thread.pushValue, .{ thread, -2 });
             try std.testing.expectEqual(3, thread.top());
 
             try std.testing.expectEqual(
@@ -2185,10 +2176,10 @@ test "Thread.remove" {
 
             const thread = state.asThread();
 
-            try recoverPushAnyType(thread, @as(f64, std.math.pi));
+            try recoverCall(Thread.pushAnyType, .{ thread, @as(f64, std.math.pi) });
             try std.testing.expectEqual(1, thread.top());
 
-            try recoverPushAnyType(thread, @as([]const u8, "foo bar baz"));
+            try recoverCall(Thread.pushAnyType, .{ thread, @as([]const u8, "foo bar baz") });
             try std.testing.expectEqual(2, thread.top());
 
             thread.remove(1);
@@ -2213,10 +2204,16 @@ test "Thread.insert" {
 
             const thread = state.asThread();
 
-            try recoverPushAnyType(thread, @as(f64, std.math.pi));
+            try recoverCall(Thread.pushAnyType, .{
+                thread,
+                @as(f64, std.math.pi),
+            });
             try std.testing.expectEqual(1, thread.top());
 
-            try recoverPushAnyType(thread, @as([]const u8, "foo bar baz"));
+            try recoverCall(Thread.pushAnyType, .{
+                thread,
+                @as([]const u8, "foo bar baz"),
+            });
             try std.testing.expectEqual(2, thread.top());
 
             thread.insert(1);
@@ -2241,10 +2238,16 @@ test "Thread.replace" {
 
             const thread = state.asThread();
 
-            try recoverPushAnyType(thread, @as(f64, std.math.pi));
+            try recoverCall(Thread.pushAnyType, .{
+                thread,
+                @as(f64, std.math.pi),
+            });
             try std.testing.expectEqual(1, thread.top());
 
-            try recoverPushAnyType(thread, @as([]const u8, "foo bar baz"));
+            try recoverCall(Thread.pushAnyType, .{
+                thread,
+                @as([]const u8, "foo bar baz"),
+            });
             try std.testing.expectEqual(2, thread.top());
 
             thread.replace(1);
@@ -2285,9 +2288,12 @@ test "Thread.xMove" {
             defer state.deinit();
 
             const thread = state.asThread();
-            const thread2 = try recoverNewThread(thread);
+            const thread2 = try recoverCall(Thread.newThread, .{thread});
 
-            try recoverPushAnyType(thread, @as([]const u8, "foo bar baz"));
+            try recoverCall(Thread.pushAnyType, .{
+                thread,
+                @as([]const u8, "foo bar baz"),
+            });
             thread.xMove(thread2, 1);
 
             try std.testing.expectEqualStrings(
@@ -2380,7 +2386,10 @@ test "Thread.valueType" {
                 .number,
                 thread.valueType(1),
             );
-            try recoverPushAnyType(thread, @as([]const u8, "foo bar baz"));
+            try recoverCall(Thread.pushAnyType, .{
+                thread,
+                @as([]const u8, "foo bar baz"),
+            });
             try std.testing.expectEqual(
                 .string,
                 thread.valueType(2),
@@ -2430,19 +2439,15 @@ test "Thread.getGlobal" {
             defer state.deinit();
 
             const thread = state.asThread();
-
-            try recoverCall(struct {
-                fn func(th: Thread) void {
-                    th.getGlobal("_G");
-                    th.getGlobal("_G");
-                }
-            }.func, .{thread});
+            try recoverCall(Thread.openBase, .{thread});
+            try recoverCall(Thread.getGlobal, .{ thread, "_G" });
+            try recoverCall(Thread.getGlobal, .{ thread, "_G" });
             try std.testing.expect(thread.equal(-1, -2));
         }
     }.testCase);
 }
 
-test "Thread.getGlobalAny" {
+test "Thread.getGlobalAnyType" {
     try testutils.withProgressiveAllocator(struct {
         fn testCase(alloc: *std.mem.Allocator) anyerror!void {
             var state = try State.init(.{
@@ -2452,15 +2457,15 @@ test "Thread.getGlobalAny" {
             defer state.deinit();
 
             const thread = state.asThread();
-            try recoverOpenBase(thread);
+            try recoverCall(Thread.openBase, .{thread});
 
-            const value = try recoverGetGlobalAny(thread, "_G");
+            const value = try recoverGetGlobalValue(thread, "_G");
             _ = value.?.table;
         }
     }.testCase);
 }
 
-test "Thread.setGlobalAny" {
+test "Thread.setGlobalAnyType" {
     try testutils.withProgressiveAllocator(struct {
         fn testCase(alloc: *std.mem.Allocator) anyerror!void {
             var state = try State.init(.{
@@ -2470,14 +2475,14 @@ test "Thread.setGlobalAny" {
             defer state.deinit();
 
             const thread = state.asThread();
-            try recoverOpenBase(thread);
+            try recoverCall(Thread.openBase, .{thread});
 
-            var value = try recoverGetGlobalAny(thread, "_G");
+            var value = try recoverGetGlobalValue(thread, "_G");
             _ = value.?.table;
 
-            thread.setGlobalAny("_G", @as(f32, 1));
+            thread.setGlobalAnyType("_G", @as(f32, 1));
 
-            value = try recoverGetGlobalAny(thread, "_G");
+            value = try recoverGetGlobalValue(thread, "_G");
             _ = value.?.number;
         }
     }.testCase);
@@ -2493,7 +2498,7 @@ test "Thread.isXXX" {
             defer state.deinit();
 
             const thread = state.asThread();
-            try recoverOpenBase(thread);
+            try recoverCall(Thread.openBase, .{thread});
 
             try std.testing.expect(!thread.isBoolean(Global));
             try std.testing.expect(!thread.isCFunction(Global));
@@ -2520,7 +2525,7 @@ test "Thread.toXXX" {
             defer state.deinit();
 
             const thread = state.asThread();
-            try recoverOpenBase(thread);
+            try recoverCall(Thread.openBase, .{thread});
 
             try std.testing.expect(thread.toBoolean(Global));
             try std.testing.expect(thread.toCFunction(Global) == null);
@@ -2544,7 +2549,7 @@ test "Thread.objLen" {
 
             const thread = state.asThread();
 
-            try recoverPushAnyType(thread, @as([]const u8, "foo bar baz"));
+            try recoverCall(Thread.pushAnyType, .{ thread, @as([]const u8, "foo bar baz") });
             try std.testing.expectEqual(
                 11,
                 thread.objLen(-1),
@@ -2553,7 +2558,7 @@ test "Thread.objLen" {
     }.testCase);
 }
 
-test "Thread.openLibs" {
+test "Thread.openXXX" {
     try testutils.withProgressiveAllocator(struct {
         fn testCase(alloc: *std.mem.Allocator) anyerror!void {
             var state = try State.init(.{
@@ -2565,70 +2570,73 @@ test "Thread.openLibs" {
             const thread = state.asThread();
 
             try std.testing.expect(
-                try recoverGetGlobalAny(thread, "_G") == null,
+                try recoverGetGlobalValue(thread, "_G") == null,
             );
             try std.testing.expect(
-                try recoverGetGlobalAny(thread, "coroutine") == null,
+                try recoverGetGlobalValue(thread, "coroutine") == null,
             );
-            try recoverCall(struct {
-                fn func(th: Thread) void {
-                    th.openBase();
-                }
-            }.func, .{thread});
+            try recoverCall(Thread.openBase, .{thread});
             try std.testing.expect(
-                try recoverGetGlobalAny(thread, "_G") != null,
+                try recoverGetGlobalValue(thread, "_G") != null,
             );
             try std.testing.expect(
-                try recoverGetGlobalAny(thread, "coroutine") != null,
+                try recoverGetGlobalValue(thread, "coroutine") != null,
             );
 
             try std.testing.expect(
-                try recoverGetGlobalAny(thread, "package") == null,
+                try recoverGetGlobalValue(thread, "package") == null,
             );
+            try recoverCall(Thread.openPackage, .{thread});
             try std.testing.expect(
-                try recoverGetGlobalAny(thread, "table") == null,
+                try recoverGetGlobalValue(thread, "package") != null,
             );
-            try std.testing.expect(
-                try recoverGetGlobalAny(thread, "string") == null,
-            );
-            try std.testing.expect(
-                try recoverGetGlobalAny(thread, "io") == null,
-            );
-            try std.testing.expect(
-                try recoverGetGlobalAny(thread, "os") == null,
-            );
-            try std.testing.expect(
-                try recoverGetGlobalAny(thread, "math") == null,
-            );
-            try std.testing.expect(
-                try recoverGetGlobalAny(thread, "debug") == null,
-            );
-            try recoverCall(struct {
-                fn func(th: Thread) void {
-                    th.openLibs();
-                }
-            }.func, .{thread});
 
             try std.testing.expect(
-                try recoverGetGlobalAny(thread, "package") != null,
+                try recoverGetGlobalValue(thread, "table") == null,
             );
+            try recoverCall(Thread.openTable, .{thread});
             try std.testing.expect(
-                try recoverGetGlobalAny(thread, "table") != null,
+                try recoverGetGlobalValue(thread, "table") != null,
             );
+
             try std.testing.expect(
-                try recoverGetGlobalAny(thread, "string") != null,
+                try recoverGetGlobalValue(thread, "string") == null,
             );
+            try recoverCall(Thread.openString, .{thread});
             try std.testing.expect(
-                try recoverGetGlobalAny(thread, "io") != null,
+                try recoverGetGlobalValue(thread, "string") != null,
             );
+
             try std.testing.expect(
-                try recoverGetGlobalAny(thread, "os") != null,
+                try recoverGetGlobalValue(thread, "io") == null,
             );
+            try recoverCall(Thread.openIO, .{thread});
             try std.testing.expect(
-                try recoverGetGlobalAny(thread, "math") != null,
+                try recoverGetGlobalValue(thread, "io") != null,
             );
+
             try std.testing.expect(
-                try recoverGetGlobalAny(thread, "debug") != null,
+                try recoverGetGlobalValue(thread, "os") == null,
+            );
+            try recoverCall(Thread.openOS, .{thread});
+            try std.testing.expect(
+                try recoverGetGlobalValue(thread, "os") != null,
+            );
+
+            try std.testing.expect(
+                try recoverGetGlobalValue(thread, "math") == null,
+            );
+            try recoverCall(Thread.openMath, .{thread});
+            try std.testing.expect(
+                try recoverGetGlobalValue(thread, "math") != null,
+            );
+
+            try std.testing.expect(
+                try recoverGetGlobalValue(thread, "debug") == null,
+            );
+            try recoverCall(Thread.openDebug, .{thread});
+            try std.testing.expect(
+                try recoverGetGlobalValue(thread, "debug") != null,
             );
         }
     }.testCase);
@@ -2645,13 +2653,14 @@ test "Thread.loadFile" {
 
             const thread = state.asThread();
 
-            try thread.loadFile("src/testdata/add.lua");
-            thread.call(0, 0);
+            try recoverCall(Thread.loadFile, .{ thread, "src/testdata/add.lua" });
+            try recoverCall(Thread.call, .{ thread, 0, 0 });
 
-            thread.getGlobal("add");
+            try recoverCall(Thread.getGlobal, .{ thread, "add" });
             thread.pushInteger(1);
             thread.pushInteger(2);
-            thread.call(2, 1);
+
+            try recoverCall(Thread.call, .{ thread, 2, 1 });
             try std.testing.expectEqual(3, thread.toInteger(-1));
         }
     }.testCase);
@@ -2668,12 +2677,12 @@ test "Thread.doFile" {
 
             const thread = state.asThread();
 
-            try thread.doFile("src/testdata/add.lua");
+            try recoverCall(Thread.doFile, .{ thread, "src/testdata/add.lua" });
 
-            thread.getGlobal("add");
+            try recoverCall(Thread.getGlobal, .{ thread, "add" });
             thread.pushInteger(1);
             thread.pushInteger(2);
-            thread.call(2, 1);
+            try recoverCall(Thread.call, .{ thread, 2, 1 });
             try std.testing.expectEqual(3, thread.toInteger(-1));
         }
     }.testCase);
