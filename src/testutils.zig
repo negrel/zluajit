@@ -2,7 +2,7 @@ const std = @import("std");
 const builtin = @import("builtin");
 const recover = @import("./recover.zig");
 const c = @import("./c.zig").c;
-const zlua = @import("./lua.zig");
+const zlua = @import("./root.zig");
 
 const Thread = zlua.Thread;
 const Value = zlua.Value;
@@ -15,7 +15,7 @@ pub fn withProgressiveAllocator(tcase: fn (*std.mem.Allocator) anyerror!void) !v
 
     const tries = 8192;
 
-    var memory_limit: usize = 10000000000000000;
+    var memory_limit: usize = 0;
     for (0..tries) |_| {
         var dbgAlloc = std.heap.DebugAllocator(.{
             .enable_memory_limit = true,
