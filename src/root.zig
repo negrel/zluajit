@@ -579,6 +579,12 @@ pub const State = struct {
     /// This function generates a [CFunction] wrapper at comptimes that takes
     /// care of extracting argument from stack and pushing result onto the
     /// stack.
+    /// If function first argument is of type [State], this state will be passed
+    /// as argument. If you want to receive a coroutine as first argument, your
+    /// function must take 2 [State] argument:
+    ///     fn myZigFunction(callingState: State, argState: State) void {
+    ///         //...
+    ///     }
     pub fn pushZigFunction(self: Self, func: anytype) void {
         const Func = @TypeOf(func);
         const info = @typeInfo(Func).@"fn";
@@ -592,11 +598,26 @@ pub const State = struct {
                     &args,
                     info.params,
                     1..info.params.len + 1,
-                ) |*arg, p, i| arg.* = th.checkAnyType(i, p.type.?);
+                ) |*arg, p, i| {
+                    if (p.type == Self and i == 1) {
+                        arg.* = th;
+                    } else arg.* = th.checkAnyType(i, p.type.?);
+                }
 
-                const result = @call(.auto, func, args);
+                var result = @call(.auto, func, args);
 
                 if (info.return_type.? != void) {
+                    switch (@typeInfo(info.return_type.?)) {
+                        .error_union => |err_union| {
+                            result = result catch |err| {
+                                th.pushString(@errorName(err));
+                                th.@"error"();
+                            };
+                            if (err_union.payload == void) return 0;
+                        },
+                        else => {},
+                    }
+
                     th.pushAnyType(result);
                     return 1;
                 }
@@ -1275,6 +1296,13 @@ pub const State = struct {
         if (err != 0) return @errorFromInt(err);
     }
 
+    /// Returns true if the given coroutine can yield, and false otherwise.
+    ///
+    /// This is the same as c.lua_isyieldable.
+    pub fn isYieldable(self: Self) bool {
+        return c.lua_isyieldable(self.lua) != 0;
+    }
+
     /// Yields a coroutine.
     ///
     /// This function should only be called as the return expression of a
@@ -1289,8 +1317,9 @@ pub const State = struct {
     /// passed as results to [State.@"resume"].
     ///
     /// This is the same as lua_yield.
-    pub fn yield(self: Self, nresults: c_int) c_int {
-        return c.lua_yield(self.lua, nresults);
+    pub fn yield(self: Self, nresults: c_int) noreturn {
+        _ = c.lua_yield(self.lua, nresults);
+        unreachable;
     }
 
     /// Starts and resumes a coroutine in a given thread.
