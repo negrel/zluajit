@@ -12,16 +12,30 @@ const recoverCall = testutils.recoverCall;
 const recoverGetGlobalValue = testutils.recoverGetGlobalValue;
 const recoverableLuaPanic = testutils.recoverableLuaPanic;
 
-/// State is a wrapper around [c.lua_State] and more precisely around main
-/// thread.
+/// State defines an ergonomic Zig wrapper around [c.lua_State].
 pub const State = struct {
     const Self = @This();
+
+    /// Thread status.
+    const Status = enum(c_int) {
+        ok = 0,
+        yield = c.LUA_YIELD,
+    };
+
     const Options = struct {
-        /// Allocator used by Lua runtime.
+        /// Allocator used by Lua runtime. Pointer must outlive [State].
         allocator: *const std.mem.Allocator = &std.heap.c_allocator,
         /// Panic handler used by Lua runtime.
         panicHandler: ?CFunction = luaPanic,
     };
+
+    fn statusFromInt(code: c_int) Status {
+        return switch (code) {
+            0 => Status.ok,
+            c.LUA_YIELD => Status.yield,
+            else => unreachable,
+        };
+    }
 
     lua: *c.lua_State,
 
@@ -41,9 +55,9 @@ pub const State = struct {
         return .{ .lua = lua };
     }
 
-    fn fromThread(thread: Thread) Self {
-        std.debug.assert(thread.isMain());
-        return .{ .lua = thread.lua };
+    /// Creates a new State wrapping provided [c.lua_State] pointer.
+    pub fn initFromCPointer(lua: *c.lua_State) Self {
+        return .{ .lua = lua };
     }
 
     /// Destroys lua state. You must not use [State] nor data owned by it after
@@ -52,44 +66,7 @@ pub const State = struct {
         c.lua_close(self.lua);
     }
 
-    /// Returns a [Thread] handle to main Lua thread.
-    pub fn asThread(self: Self) Thread {
-        return Thread.init(self.lua);
-    }
-
-    /// Opens and loads base Lua library.
-    pub fn openBase(self: Self) void {
-        c.lua_pushcfunction(self.lua, c.luaopen_base);
-        c.lua_call(self.lua, 0, 0);
-    }
-};
-
-/// Thread defines a Lua thread.
-pub const Thread = struct {
-    const Self = @This();
-
-    /// Thread status.
-    const Status = enum(c_int) {
-        ok = 0,
-        yield = c.LUA_YIELD,
-    };
-
-    fn statusFromInt(code: c_int) Status {
-        return switch (code) {
-            0 => Status.ok,
-            c.LUA_YIELD => Status.yield,
-            else => unreachable,
-        };
-    }
-
-    lua: *c.lua_State,
-
-    /// Initializes a new Thread wrapping provided [c.lua_State].
-    pub fn init(lua: *c.lua_State) Self {
-        return .{ .lua = lua };
-    }
-
-    /// Creates a new thread, pushes it on the stack, and returns a [Thread]
+    /// Creates a new thread, pushes it on the stack, and returns a [State]
     /// that represents this new thread. The new thread returned by this
     /// function shares with the original thread its global environment, but has
     /// an independent execution stack.
@@ -103,7 +80,7 @@ pub const Thread = struct {
     /// This is the same as lua_newthread.
     pub fn newThread(self: Self) Self {
         // lua_newthread never returns a null pointer.
-        return Self.init(c.lua_newthread(self.lua).?);
+        return Self.initFromCPointer(c.lua_newthread(self.lua).?);
     }
 
     /// Returns the index of the top element in the stack. Because indices start
@@ -169,7 +146,7 @@ pub const Thread = struct {
     /// the stack to.
     ///
     /// This is the same as lua_xmove.
-    pub fn xMove(self: Self, to: Thread, n: c_int) void {
+    pub fn xMove(self: Self, to: State, n: c_int) void {
         c.lua_xmove(self.lua, to.lua, n);
     }
 
@@ -418,13 +395,13 @@ pub const Thread = struct {
         return c.lua_topointer(self.lua, idx);
     }
 
-    /// Converts the value at the given acceptable index to a Lua [Thread].
+    /// Converts the value at the given acceptable index to a Lua [State].
     /// This value must be a thread; otherwise, the function returns null.
     ///
     /// This is the same as lua_tothread.
-    pub fn toThread(self: Self, idx: c_int) ?Thread {
+    pub fn toThread(self: Self, idx: c_int) ?State {
         const lua = c.lua_tothread(self.lua, idx) orelse return null;
-        return Thread.init(lua);
+        return State.initFromCPointer(lua);
     }
 
     /// If the value at the given acceptable index is a full userdata, returns
@@ -444,7 +421,7 @@ pub const Thread = struct {
         return c.lua_objlen(self.lua, idx);
     }
 
-    /// This is the same as [Thread.objLen].
+    /// This is the same as [State.objLen].
     pub fn strLen(self: Self, idx: c_int) usize {
         return c.lua_strlen(self.lua, idx);
     }
@@ -462,12 +439,11 @@ pub const Thread = struct {
             []const u8 => self.toString(idx),
             TableRef => TableRef.init(ValueRef.init(self, idx)),
             *c.lua_State => c.lua_tothread(self.lua, idx),
-            Thread => self.toThread(idx),
-            State => (self.toAnyType(Thread, idx) orelse return null).asState(),
+            State => self.toThread(idx),
             Value => {
                 return switch (self.valueType(idx) orelse return null) {
                     .thread => .{
-                        .thread = self.toAnyType(Thread, idx) orelse return null,
+                        .thread = self.toAnyType(State, idx) orelse return null,
                     },
                     .boolean => .{
                         .boolean = self.toAnyType(bool, idx) orelse return null,
@@ -579,9 +555,9 @@ pub const Thread = struct {
     /// the function whenever it is called. To associate values with a
     /// [CFunction], first these values should be pushed onto the stack
     /// (when there are multiple values, the first value is pushed first). Then
-    /// [Thread.pushCClosure] is called to create and push the [CFunction] onto
+    /// [State.pushCClosure] is called to create and push the [CFunction] onto
     /// the stack, with the argument `n` telling how many values should be
-    /// associated with the function. [Thread.pushCClosure] also pops these values
+    /// associated with the function. [State.pushCClosure] also pops these values
     /// from the stack.
     ///
     /// This is the same as lua_pushcclosure.
@@ -614,7 +590,7 @@ pub const Thread = struct {
 
         self.pushCFunction(struct {
             fn cfunc(lua: ?*c.lua_State) callconv(.c) c_int {
-                const th = Thread.init(lua.?);
+                const th = State.initFromCPointer(lua.?);
 
                 var args: std.meta.ArgsTuple(Func) = undefined;
                 inline for (
@@ -674,13 +650,12 @@ pub const Thread = struct {
             []const u8 => return self.pushString(v),
             TableRef, FunctionRef => return self.pushAnyType(v.ref),
             ValueRef => return self.pushValue(v.idx),
-            *c.lua_State => return self.pushAnyType(Thread.init(v)),
-            Thread => {
+            *c.lua_State => return self.pushAnyType(State.initFromCPointer(v)),
+            State => {
                 _ = v.pushThread();
                 if (v.lua != self.lua) v.xMove(self, 1);
                 return;
             },
-            State => return v.asThread().pushAnyType(v.asThread()),
             // TODO: userdata => {},
             Value => return switch (v) {
                 .boolean => self.pushAnyType(v.boolean),
@@ -878,13 +853,9 @@ pub const Thread = struct {
                 self.checkValueType(narg, .thread);
                 return self.toThread(narg).?.lua;
             },
-            Thread => {
+            State => {
                 self.checkValueType(narg, .thread);
                 return self.toThread(narg).?;
-            },
-            State => {
-                const th = self.checkAnyType(narg, Thread);
-                return th.asState() orelse self.typeError(narg, "State");
             },
             Value => {
                 self.checkAny(narg);
@@ -929,7 +900,7 @@ pub const Thread = struct {
         c.luaL_argerror(self.lua, narg, extramsg);
     }
 
-    /// Dump [Thread] Lua stack using [std.debug.print].
+    /// Dump [State] Lua stack using [std.debug.print].
     pub fn dumpStack(self: Self) void {
         std.debug.print("lua stack size {}\n", .{self.top()});
         for (1..@as(usize, @intCast(self.top())) + 1) |i| {
@@ -961,17 +932,11 @@ pub const Thread = struct {
         c.luaL_where(self.lua, lvl);
     }
 
-    /// Returns true if is is the main [Thread] and false otherwise.
+    /// Returns true if is is the main [State] and false otherwise.
     pub fn isMain(self: Self) bool {
         const main = c.lua_pushthread(self.lua) == 1;
         c.lua_pop(self.lua, 1);
         return main;
-    }
-
-    /// Returns [Thread] as [State] if it is the main thread.
-    pub fn asState(self: Self) ?State {
-        if (self.isMain()) return State.fromThread(self);
-        return null;
     }
 
     /// Pushes onto the stack the value t[k], where t is the value at the given
@@ -1022,7 +987,7 @@ pub const Thread = struct {
     }
 
     /// Creates a new empty table and pushes it onto the stack. It is equivalent
-    /// to [Thread.createTable](0, 0).
+    /// to [State.createTable](0, 0).
     ///
     /// This is the same as lua_newtable.
     pub fn newTable(self: Self) void {
@@ -1223,15 +1188,15 @@ pub const Thread = struct {
         return c.luaL_callmeta(self.lua, obj, e) != 0;
     }
 
-    /// Loads a Lua chunk. If there are no errors, [Thread.load] pushes the
+    /// Loads a Lua chunk. If there are no errors, [State.load] pushes the
     /// compiled chunk as a Lua function on top of the stack. Otherwise, it
     /// pushes an error message.
     ///
     /// This function only loads a chunk; it does not run it.
-    /// [Thread.load] automatically detects whether the chunk is text or binary,
+    /// [State.load] automatically detects whether the chunk is text or binary,
     /// and loads it accordingly.
     ///
-    /// The [Thread.load] function uses a user-supplied reader function to read
+    /// The [State.load] function uses a user-supplied reader function to read
     /// the chunk (see Reader). The data argument is an opaque value passed to
     /// the reader function.
     ///
@@ -1321,12 +1286,12 @@ pub const Thread = struct {
     /// [CFunction], as follows:
     ///     return thread.yield(nresults);
     ///
-    /// When a [CFunction] calls [Thread.yield] in that way, the running
-    /// coroutine suspends its execution, and the call to [Thread.@"resume"]
+    /// When a [CFunction] calls [State.yield] in that way, the running
+    /// coroutine suspends its execution, and the call to [State.@"resume"]
     /// that started this coroutine returns.
     ///
     /// The parameter nresults is the number of values from the stack that are
-    /// passed as results to [Thread.@"resume"].
+    /// passed as results to [State.@"resume"].
     ///
     /// This is the same as lua_yield.
     pub fn yield(self: Self, nresults: c_int) c_int {
@@ -1336,18 +1301,18 @@ pub const Thread = struct {
     /// Starts and resumes a coroutine in a given thread.
     ///
     /// To start a coroutine, you first create a new thread (see
-    /// [Thread.newThread]); then you push onto its stack the main function plus
-    /// any arguments; then you call [Thread.@"resume"], with narg being the
+    /// [State.newThread]); then you push onto its stack the main function plus
+    /// any arguments; then you call [State.@"resume"], with narg being the
     /// number of arguments. This call returns when the coroutine suspends or
     /// finishes its execution. When it returns, the stack contains all values
-    /// passed to [Thread.yield], or all values returned by the body function.
-    /// [Thread.@"resume"] returns [Thread.Status.yield] if the coroutine yields,
-    /// [Thread.Status.ok] if the coroutine finishes its execution without errors,
-    /// or an error code in case of errors (see [Thread.pCall]). In case of
+    /// passed to [State.yield], or all values returned by the body function.
+    /// [State.@"resume"] returns [State.Status.yield] if the coroutine yields,
+    /// [State.Status.ok] if the coroutine finishes its execution without errors,
+    /// or an error code in case of errors (see [State.pCall]). In case of
     /// errors, the stack is not unwound, so you can use the debug API over it.
     /// The error message is on the top of the stack. To restart a coroutine,
     /// you put on its stack only the values to be passed as results from yield,
-    /// and then call [Thread.@"resume"].
+    /// and then call [State.@"resume"].
     ///
     /// This is the same as lua_resume.
     pub fn @"resume"(self: Self, narg: c_int) (CallError)!Status {
@@ -1414,21 +1379,20 @@ pub const Thread = struct {
     /// A typical traversal looks like this:
     ///
     ///     // table is in the stack at index 't'
-    ///     const thread = state.asThread();
-    ///     thread.pushNil(); // first key
-    ///     while (thread.next(t)) {
+    ///     state.pushNil(); // first key
+    ///     while (state.next(t)) {
     ///         // uses 'key' (at index -2) and 'value' (at index -1)
     ///         std.debug.print("{s} - {s}\n", .{
-    ///             thread.typeName(thread.valueType(-2).?),
-    ///             thread.typeName(thread.valueType(-1).?),
+    ///             state.typeName(state.valueType(-2).?),
+    ///             state.typeName(state.valueType(-1).?),
     ///         });
     ///         // removes 'value'; keeps 'key' for next iteration
-    ///         thread.pop(1);
+    ///         state.pop(1);
     ///     }
-    /// While traversing a table, do not call [Thread.toString] directly on a
+    /// While traversing a table, do not call [State.toString] directly on a
     /// key, unless you know that the key is actually a string. Recall that
-    /// [Thread.toString] changes the value at the given index; this confuses
-    /// the next call to [Thread.next].
+    /// [State.toString] changes the value at the given index; this confuses
+    /// the next call to [State.next].
     ///
     /// This is the same as lua_next.
     pub fn next(self: Self, idx: c_int) bool {
@@ -1456,7 +1420,7 @@ pub const Thread = struct {
         return ud;
     }
 
-    /// Changes the allocator of a given [Thread] to f with user data ud.
+    /// Changes the allocator of a given [State] to f with user data ud.
     ///
     /// This is the same as lua_setallocf.
     pub fn setAllocator(self: Self, alloc: ?*std.mem.Allocator) void {
@@ -1542,7 +1506,7 @@ pub const Thread = struct {
     }
 };
 
-/// [Thread.gc] operations.
+/// [State.gc] operations.
 pub const GcOp = enum(c_int) {
     stop = c.LUA_GCSTOP,
     restart = c.LUA_GCRESTART,
@@ -1640,22 +1604,22 @@ pub const Value = union(ValueType) {
     number: f64,
     string: []const u8,
     table: TableRef,
-    thread: Thread,
+    thread: State,
     userdata: *anyopaque,
 };
 
-/// ValueRef is a reference to a Lua value on the stack of a [Thread]. [Thread]
+/// ValueRef is a reference to a Lua value on the stack of a [State]. [State]
 /// must outlive ValueRef and stack position must remain stable.
 pub const ValueRef = struct {
     const Self = @This();
 
-    thread: Thread,
+    thread: State,
     idx: c_int,
 
     /// Initializes a new reference of value at index `idx` on stack of
     /// `thread`. If `idx` is a relative index, it is converted to an absolute
     /// index.
-    pub fn init(thread: Thread, idx: c_int) Self {
+    pub fn init(thread: State, idx: c_int) Self {
         return .{
             .thread = thread,
             .idx = if (idx < 0) thread.top() + idx + 1 else idx,
@@ -1697,8 +1661,8 @@ pub const Integer = c.lua_Integer;
 /// type for numbers (e.g., float or long).
 pub const Number = c.lua_Number;
 
-/// TableRef is a reference to a table value on the stack of a [Thread].
-/// [Thread] must outlive TableRef and stack position must remain stable.
+/// TableRef is a reference to a table value on the stack of a [State].
+/// [State] must outlive TableRef and stack position must remain stable.
 pub const TableRef = struct {
     const Self = @This();
 
@@ -1709,8 +1673,8 @@ pub const TableRef = struct {
     }
 };
 
-/// FunctionRef is a reference to a function on the stack of a [Thread].
-/// [Thread] must outlive TableRef and stack position must remain stable.
+/// FunctionRef is a reference to a function on the stack of a [State].
+/// [State] must outlive TableRef and stack position must remain stable.
 pub const FunctionRef = struct {
     const Self = @This();
 
@@ -1789,8 +1753,8 @@ fn luaAlloc(
 /// Panic function called by lua before aborting. This functions dumps lua stack
 /// before panicking.
 pub fn luaPanic(lua: ?*c.lua_State) callconv(.c) c_int {
-    const th = Thread.init(lua.?);
-    th.dumpStack();
+    const state = State.initFromCPointer(lua.?);
+    state.dumpStack();
     @panic("lua panic");
 }
 
@@ -1815,26 +1779,10 @@ test "Thread.newThread" {
             });
             defer state.deinit();
 
-            const thread = try recoverCall(Thread.newThread, .{state.asThread()});
+            const thread = try recoverCall(State.newThread, .{state});
             try std.testing.expect(!thread.isMain());
-            try std.testing.expectEqual(null, thread.asState());
             try std.testing.expectEqual(0, thread.top());
             try std.testing.expectEqual(.ok, thread.status());
-        }
-    }.testCase);
-}
-
-test "State.asThread" {
-    try testutils.withProgressiveAllocator(struct {
-        fn testCase(alloc: *std.mem.Allocator) anyerror!void {
-            var state = try State.init(.{
-                .allocator = alloc,
-                .panicHandler = null,
-            });
-            defer state.deinit();
-
-            const thread = state.asThread();
-            try std.testing.expect(thread.isMain());
         }
     }.testCase);
 }
@@ -1848,17 +1796,15 @@ test "Thread.pushAnyType/Thread.popAnyType/Thread.valueType" {
             });
             defer state.deinit();
 
-            const thread = state.asThread();
-
             // Bool.
             {
-                try recoverCall(Thread.pushAnyType, .{ thread, true });
-                try std.testing.expectEqual(thread.valueType(-1), .boolean);
-                try std.testing.expectEqual(true, thread.popAnyType(bool));
+                try recoverCall(State.pushAnyType, .{ state, true });
+                try std.testing.expectEqual(state.valueType(-1), .boolean);
+                try std.testing.expectEqual(true, state.popAnyType(bool));
 
-                try recoverCall(Thread.pushAnyType, .{ thread, false });
-                try std.testing.expectEqual(thread.valueType(-1), .boolean);
-                try std.testing.expectEqual(false, thread.popAnyType(bool));
+                try recoverCall(State.pushAnyType, .{ state, false });
+                try std.testing.expectEqual(state.valueType(-1), .boolean);
+                try std.testing.expectEqual(false, state.popAnyType(bool));
             }
 
             // Function.
@@ -1869,115 +1815,108 @@ test "Thread.pushAnyType/Thread.popAnyType/Thread.valueType" {
                     }
                 };
 
-                try recoverCall(Thread.pushAnyType, .{ thread, &ns.func });
-                try std.testing.expectEqual(thread.valueType(-1), .function);
+                try recoverCall(State.pushAnyType, .{ state, &ns.func });
+                try std.testing.expectEqual(state.valueType(-1), .function);
                 try std.testing.expectEqual(
-                    FunctionRef.init(ValueRef.init(thread, thread.top())),
-                    thread.popAnyType(FunctionRef),
+                    FunctionRef.init(ValueRef.init(state, state.top())),
+                    state.popAnyType(FunctionRef),
                 );
             }
 
-            // State / Thread / c.lua_State
+            // State / c.lua_State
             {
-                try recoverCall(Thread.pushAnyType, .{ thread, state });
-                try std.testing.expectEqual(thread.valueType(-1), .thread);
+                try recoverCall(State.pushAnyType, .{ state, state });
+                try std.testing.expectEqual(state.valueType(-1), .thread);
                 try std.testing.expectEqual(
                     state,
-                    thread.popAnyType(State),
+                    state.popAnyType(State),
                 );
 
-                try recoverCall(Thread.pushAnyType, .{ thread, thread });
-                try std.testing.expectEqual(thread.valueType(-1), .thread);
-                try std.testing.expectEqual(
-                    thread,
-                    thread.popAnyType(Thread),
-                );
-
-                try recoverCall(Thread.pushAnyType, .{ thread, state.lua });
-                try std.testing.expectEqual(thread.valueType(-1), .thread);
+                try recoverCall(State.pushAnyType, .{ state, state.lua });
+                try std.testing.expectEqual(state.valueType(-1), .thread);
                 try std.testing.expectEqual(
                     state.lua,
-                    thread.popAnyType(*c.lua_State),
+                    state.popAnyType(*c.lua_State),
                 );
 
-                try recoverCall(Thread.pushAnyType, .{ thread, thread.lua });
-                try std.testing.expectEqual(thread.valueType(-1), .thread);
+                try recoverCall(State.pushAnyType, .{ state, state.lua });
+                try std.testing.expectEqual(state.valueType(-1), .thread);
                 try std.testing.expectEqual(
-                    thread,
-                    thread.popAnyType(Thread),
+                    state,
+                    state.popAnyType(State),
                 );
             }
 
             // Strings.
             {
-                try recoverCall(Thread.pushAnyType, .{
-                    thread, @as([]const u8, "foo bar baz"),
+                try recoverCall(State.pushAnyType, .{
+                    state, @as([]const u8, "foo bar baz"),
                 });
-                try std.testing.expectEqual(thread.valueType(-1), .string);
+                try std.testing.expectEqual(state.valueType(-1), .string);
                 try std.testing.expectEqualStrings(
                     "foo bar baz",
-                    thread.popAnyType([]const u8).?,
+                    state.popAnyType([]const u8).?,
                 );
 
-                try recoverCall(Thread.pushAnyType, .{ thread, @as(f64, 1) });
+                try recoverCall(State.pushAnyType, .{ state, @as(f64, 1) });
                 try std.testing.expectEqualStrings(
                     "1",
                     (try recoverCall(struct {
-                        fn popString(th: Thread) ?[]const u8 {
+                        fn popString(th: State) ?[]const u8 {
                             return th.popAnyType([]const u8);
                         }
-                    }.popString, .{thread})).?,
+                    }.popString, .{state})).?,
                 );
             }
 
             // Floats.
             {
-                try recoverCall(Thread.pushAnyType, .{ thread, @as(f32, 1) });
-                try std.testing.expectEqual(thread.valueType(-1), .number);
-                try std.testing.expectEqual(1, thread.popAnyType(f32));
+                try recoverCall(State.pushAnyType, .{ state, @as(f32, 1) });
+                try std.testing.expectEqual(state.valueType(-1), .number);
+                try std.testing.expectEqual(1, state.popAnyType(f32));
 
-                try recoverCall(Thread.pushAnyType, .{ thread, @as(f64, 1) });
-                try std.testing.expectEqual(thread.valueType(-1), .number);
-                try std.testing.expectEqual(1, thread.popAnyType(f64));
+                try recoverCall(State.pushAnyType, .{ state, @as(f64, 1) });
+                try std.testing.expectEqual(state.valueType(-1), .number);
+                try std.testing.expectEqual(1, state.popAnyType(f64));
 
-                try recoverCall(Thread.pushAnyType, .{ thread, @as(f32, 1) });
-                try std.testing.expectEqual(thread.valueType(-1), .number);
-                try std.testing.expectEqual(1, thread.popAnyType(f64));
+                try recoverCall(State.pushAnyType, .{ state, @as(f32, 1) });
+                try std.testing.expectEqual(state.valueType(-1), .number);
+                try std.testing.expectEqual(1, state.popAnyType(f64));
 
-                try recoverCall(Thread.pushAnyType, .{ thread, @as(f64, 1) });
-                try std.testing.expectEqual(thread.valueType(-1), .number);
-                try std.testing.expectEqual(1, thread.popAnyType(f32));
+                try recoverCall(State.pushAnyType, .{ state, @as(f64, 1) });
+                try std.testing.expectEqual(state.valueType(-1), .number);
+                try std.testing.expectEqual(1, state.popAnyType(f32));
             }
 
             // Light userdata.
             {
                 const pi: *anyopaque = @ptrCast(@constCast(&std.math.pi));
-                try recoverCall(Thread.pushAnyType, .{ thread, pi });
+                try recoverCall(State.pushAnyType, .{ state, pi });
                 try std.testing.expectEqual(
-                    thread.valueType(-1),
+                    state.valueType(-1),
                     .lightuserdata,
                 );
-                try std.testing.expectEqual(pi, thread.popAnyType(*anyopaque).?);
+                try std.testing.expectEqual(pi, state.popAnyType(*anyopaque).?);
             }
 
             // Pointers.
             {
                 const pi: f64 = std.math.pi;
-                try recoverCall(Thread.pushAnyType, .{ thread, pi });
-                try std.testing.expectEqual(thread.valueType(-1), .number);
-                try std.testing.expectEqual(pi, thread.popAnyType(f64));
+                try recoverCall(State.pushAnyType, .{ state, pi });
+                try std.testing.expectEqual(state.valueType(-1), .number);
+                try std.testing.expectEqual(pi, state.popAnyType(f64));
             }
 
             // Value.
             {
                 const value: Value = .{ .number = std.math.pi };
-                try recoverCall(Thread.pushAnyType, .{ thread, value });
-                try std.testing.expectEqual(thread.valueType(-1), .number);
-                try std.testing.expectEqual(value, thread.popAnyType(Value));
+                try recoverCall(State.pushAnyType, .{ state, value });
+                try std.testing.expectEqual(state.valueType(-1), .number);
+                try std.testing.expectEqual(value, state.popAnyType(Value));
 
-                try recoverCall(Thread.pushAnyType, .{ thread, value });
-                try std.testing.expectEqual(thread.valueType(-1), .number);
-                try std.testing.expectEqual(value.number, thread.popAnyType(f64));
+                try recoverCall(State.pushAnyType, .{ state, value });
+                try std.testing.expectEqual(state.valueType(-1), .number);
+                try std.testing.expectEqual(value.number, state.popAnyType(f64));
             }
         }
     }.testCase);
@@ -1987,27 +1926,25 @@ test "Thread.pushZigFunction" {
     var state = try State.init(.{});
     defer state.deinit();
 
-    const thread = state.asThread();
-
     const zfunc = struct {
         pub fn zfunc(a: f64, b: f64) f64 {
             return a + b;
         }
     }.zfunc;
 
-    thread.pushZigFunction(zfunc);
-    thread.pushInteger(1);
-    thread.pushInteger(2);
-    thread.call(2, 1);
-    try std.testing.expectEqual(3, thread.toInteger(-1));
+    state.pushZigFunction(zfunc);
+    state.pushInteger(1);
+    state.pushInteger(2);
+    state.call(2, 1);
+    try std.testing.expectEqual(3, state.toInteger(-1));
 
     // Missing argument.
-    thread.pushZigFunction(zfunc);
-    thread.pushInteger(1);
-    thread.pCall(1, 1, 0) catch {
+    state.pushZigFunction(zfunc);
+    state.pushInteger(1);
+    state.pCall(1, 1, 0) catch {
         try std.testing.expectEqualStrings(
             "bad argument #2 to '?' (number expected, got no value)",
-            thread.popAnyType([]const u8).?,
+            state.popAnyType([]const u8).?,
         );
         return;
     };
@@ -2019,22 +1956,20 @@ test "Thread.error" {
     var state = try State.init(.{});
     defer state.deinit();
 
-    const thread = state.asThread();
-
     const zfunc = struct {
-        pub fn zfunc(th: Thread) f64 {
+        pub fn zfunc(th: State) f64 {
             th.pushString("a runtime error");
             th.@"error"();
         }
     }.zfunc;
 
     // Missing argument.
-    thread.pushZigFunction(zfunc);
-    _ = thread.pushThread();
-    thread.pCall(1, 0, 0) catch {
+    state.pushZigFunction(zfunc);
+    _ = state.pushThread();
+    state.pCall(1, 0, 0) catch {
         try std.testing.expectEqualStrings(
             "a runtime error",
-            thread.popAnyType([]const u8).?,
+            state.popAnyType([]const u8).?,
         );
         return;
     };
@@ -2051,14 +1986,12 @@ test "Thread.concat" {
             });
             defer state.deinit();
 
-            const thread = state.asThread();
-
-            try recoverCall(Thread.pushNumber, .{ thread, 100 });
-            try recoverCall(Thread.pushString, .{ thread, " foo" });
-            try recoverCall(Thread.concat, .{ thread, 2 });
+            try recoverCall(State.pushNumber, .{ state, 100 });
+            try recoverCall(State.pushString, .{ state, " foo" });
+            try recoverCall(State.concat, .{ state, 2 });
             try std.testing.expectEqualStrings(
                 "100 foo",
-                thread.popAnyType([]const u8).?,
+                state.popAnyType([]const u8).?,
             );
         }
     }.testCase);
@@ -2073,32 +2006,30 @@ test "Thread.next" {
             });
             defer state.deinit();
 
-            const thread = state.asThread();
+            try recoverCall(State.newTable, .{state});
+            const idx = state.top();
 
-            try recoverCall(Thread.newTable, .{thread});
-            const idx = thread.top();
+            try recoverCall(State.pushInteger, .{ state, 1 });
+            try recoverCall(State.rawSeti, .{ state, idx, 1 });
 
-            try recoverCall(Thread.pushInteger, .{ thread, 1 });
-            try recoverCall(Thread.rawSeti, .{ thread, idx, 1 });
+            try recoverCall(State.pushInteger, .{ state, 2 });
+            try recoverCall(State.rawSeti, .{ state, idx, 2 });
 
-            try recoverCall(Thread.pushInteger, .{ thread, 2 });
-            try recoverCall(Thread.rawSeti, .{ thread, idx, 2 });
-
-            try recoverCall(Thread.pushInteger, .{ thread, 3 });
-            try recoverCall(Thread.rawSeti, .{ thread, idx, 3 });
+            try recoverCall(State.pushInteger, .{ state, 3 });
+            try recoverCall(State.rawSeti, .{ state, idx, 3 });
 
             var i: Integer = 0;
-            thread.pushNil(); // first key
-            while (thread.next(idx)) {
+            state.pushNil(); // first key
+            while (state.next(idx)) {
                 i += 1;
                 try std.testing.expectEqual(
                     i,
                     // removes 'value'; keeps 'key' for next iteration
-                    thread.popAnyType(Integer),
+                    state.popAnyType(Integer),
                 );
                 try std.testing.expectEqual(
                     i,
-                    thread.toAnyType(Integer, -1),
+                    state.toAnyType(Integer, -1),
                 );
             }
 
@@ -2116,11 +2047,9 @@ test "Thread.top/Thread.setTop" {
             });
             defer state.deinit();
 
-            const thread = state.asThread();
-
-            try std.testing.expectEqual(0, thread.top());
-            thread.setTop(10);
-            try std.testing.expectEqual(10, thread.top());
+            try std.testing.expectEqual(0, state.top());
+            state.setTop(10);
+            try std.testing.expectEqual(10, state.top());
         }
     }.testCase);
 }
@@ -2134,36 +2063,34 @@ test "Thread.pushValue" {
             });
             defer state.deinit();
 
-            const thread = state.asThread();
-
-            try recoverCall(Thread.pushAnyType, .{
-                thread,
+            try recoverCall(State.pushAnyType, .{
+                state,
                 @as(f64, std.math.pi),
             });
-            try std.testing.expectEqual(1, thread.top());
+            try std.testing.expectEqual(1, state.top());
 
-            try recoverCall(Thread.pushAnyType, .{
-                thread,
+            try recoverCall(State.pushAnyType, .{
+                state,
                 @as([]const u8, "foo bar baz"),
             });
-            try std.testing.expectEqual(2, thread.top());
+            try std.testing.expectEqual(2, state.top());
 
-            try recoverCall(Thread.pushValue, .{ thread, -2 });
-            try std.testing.expectEqual(3, thread.top());
+            try recoverCall(State.pushValue, .{ state, -2 });
+            try std.testing.expectEqual(3, state.top());
 
             try std.testing.expectEqual(
                 @as(f64, std.math.pi),
-                thread.popAnyType(f64),
+                state.popAnyType(f64),
             );
             try std.testing.expectEqualStrings(
                 @as([]const u8, "foo bar baz"),
-                thread.popAnyType([]const u8).?,
+                state.popAnyType([]const u8).?,
             );
             try std.testing.expectEqual(
                 @as(f64, std.math.pi),
-                thread.popAnyType(f64),
+                state.popAnyType(f64),
             );
-            try std.testing.expectEqual(0, thread.top());
+            try std.testing.expectEqual(0, state.top());
         }
     }.testCase);
 }
@@ -2177,21 +2104,19 @@ test "Thread.remove" {
             });
             defer state.deinit();
 
-            const thread = state.asThread();
+            try recoverCall(State.pushAnyType, .{ state, @as(f64, std.math.pi) });
+            try std.testing.expectEqual(1, state.top());
 
-            try recoverCall(Thread.pushAnyType, .{ thread, @as(f64, std.math.pi) });
-            try std.testing.expectEqual(1, thread.top());
+            try recoverCall(State.pushAnyType, .{ state, @as([]const u8, "foo bar baz") });
+            try std.testing.expectEqual(2, state.top());
 
-            try recoverCall(Thread.pushAnyType, .{ thread, @as([]const u8, "foo bar baz") });
-            try std.testing.expectEqual(2, thread.top());
-
-            thread.remove(1);
+            state.remove(1);
 
             try std.testing.expectEqualStrings(
                 @as([]const u8, "foo bar baz"),
-                thread.popAnyType([]const u8).?,
+                state.popAnyType([]const u8).?,
             );
-            try std.testing.expectEqual(0, thread.top());
+            try std.testing.expectEqual(0, state.top());
         }
     }.testCase);
 }
@@ -2205,27 +2130,25 @@ test "Thread.insert" {
             });
             defer state.deinit();
 
-            const thread = state.asThread();
-
-            try recoverCall(Thread.pushAnyType, .{
-                thread,
+            try recoverCall(State.pushAnyType, .{
+                state,
                 @as(f64, std.math.pi),
             });
-            try std.testing.expectEqual(1, thread.top());
+            try std.testing.expectEqual(1, state.top());
 
-            try recoverCall(Thread.pushAnyType, .{
-                thread,
+            try recoverCall(State.pushAnyType, .{
+                state,
                 @as([]const u8, "foo bar baz"),
             });
-            try std.testing.expectEqual(2, thread.top());
+            try std.testing.expectEqual(2, state.top());
 
-            thread.insert(1);
+            state.insert(1);
 
             try std.testing.expectEqual(
                 @as(f64, std.math.pi),
-                thread.popAnyType(f64),
+                state.popAnyType(f64),
             );
-            try std.testing.expectEqual(1, thread.top());
+            try std.testing.expectEqual(1, state.top());
         }
     }.testCase);
 }
@@ -2239,27 +2162,25 @@ test "Thread.replace" {
             });
             defer state.deinit();
 
-            const thread = state.asThread();
-
-            try recoverCall(Thread.pushAnyType, .{
-                thread,
+            try recoverCall(State.pushAnyType, .{
+                state,
                 @as(f64, std.math.pi),
             });
-            try std.testing.expectEqual(1, thread.top());
+            try std.testing.expectEqual(1, state.top());
 
-            try recoverCall(Thread.pushAnyType, .{
-                thread,
+            try recoverCall(State.pushAnyType, .{
+                state,
                 @as([]const u8, "foo bar baz"),
             });
-            try std.testing.expectEqual(2, thread.top());
+            try std.testing.expectEqual(2, state.top());
 
-            thread.replace(1);
+            state.replace(1);
 
             try std.testing.expectEqualStrings(
                 @as([]const u8, "foo bar baz"),
-                thread.popAnyType([]const u8).?,
+                state.popAnyType([]const u8).?,
             );
-            try std.testing.expectEqual(0, thread.top());
+            try std.testing.expectEqual(0, state.top());
         }
     }.testCase);
 }
@@ -2273,10 +2194,8 @@ test "Thread.checkStack" {
             });
             defer state.deinit();
 
-            const thread = state.asThread();
-
-            try std.testing.expect(thread.checkStack(1));
-            try std.testing.expect(!thread.checkStack(400000000));
+            try std.testing.expect(state.checkStack(1));
+            try std.testing.expect(!state.checkStack(400000000));
         }
     }.testCase);
 }
@@ -2290,21 +2209,20 @@ test "Thread.xMove" {
             });
             defer state.deinit();
 
-            const thread = state.asThread();
-            const thread2 = try recoverCall(Thread.newThread, .{thread});
+            const thread2 = try recoverCall(State.newThread, .{state});
 
-            try recoverCall(Thread.pushAnyType, .{
-                thread,
+            try recoverCall(State.pushAnyType, .{
+                state,
                 @as([]const u8, "foo bar baz"),
             });
-            thread.xMove(thread2, 1);
+            state.xMove(thread2, 1);
 
             try std.testing.expectEqualStrings(
                 @as([]const u8, "foo bar baz"),
                 thread2.popAnyType([]const u8).?,
             );
             try std.testing.expectEqual(0, thread2.top());
-            try std.testing.expectEqual(1, thread.top());
+            try std.testing.expectEqual(1, state.top());
         }
     }.testCase);
 }
@@ -2318,14 +2236,12 @@ test "Thread.equal" {
             });
             defer state.deinit();
 
-            const thread = state.asThread();
+            state.pushAnyType(@as(f64, 1));
+            state.pushAnyType(@as(f64, 2));
 
-            thread.pushAnyType(@as(f64, 1));
-            thread.pushAnyType(@as(f64, 2));
-
-            try std.testing.expect(!thread.equal(1, 2));
-            try std.testing.expect(thread.equal(1, 1));
-            try std.testing.expect(thread.equal(2, 2));
+            try std.testing.expect(!state.equal(1, 2));
+            try std.testing.expect(state.equal(1, 1));
+            try std.testing.expect(state.equal(2, 2));
         }
     }.testCase);
 }
@@ -2339,14 +2255,12 @@ test "Thread.rawEqual" {
             });
             defer state.deinit();
 
-            const thread = state.asThread();
+            state.pushAnyType(@as(f64, 1));
+            state.pushAnyType(@as(f64, 2));
 
-            thread.pushAnyType(@as(f64, 1));
-            thread.pushAnyType(@as(f64, 2));
-
-            try std.testing.expect(!thread.rawEqual(1, 2));
-            try std.testing.expect(thread.rawEqual(1, 1));
-            try std.testing.expect(thread.rawEqual(2, 2));
+            try std.testing.expect(!state.rawEqual(1, 2));
+            try std.testing.expect(state.rawEqual(1, 1));
+            try std.testing.expect(state.rawEqual(2, 2));
         }
     }.testCase);
 }
@@ -2360,15 +2274,13 @@ test "Thread.lessThan" {
             });
             defer state.deinit();
 
-            const thread = state.asThread();
+            state.pushAnyType(@as(f64, 1));
+            state.pushAnyType(@as(f64, 2));
 
-            thread.pushAnyType(@as(f64, 1));
-            thread.pushAnyType(@as(f64, 2));
-
-            try std.testing.expect(thread.lessThan(1, 2));
-            try std.testing.expect(!thread.lessThan(2, 1));
-            try std.testing.expect(!thread.lessThan(1, 1));
-            try std.testing.expect(!thread.lessThan(2, 2));
+            try std.testing.expect(state.lessThan(1, 2));
+            try std.testing.expect(!state.lessThan(2, 1));
+            try std.testing.expect(!state.lessThan(1, 1));
+            try std.testing.expect(!state.lessThan(2, 2));
         }
     }.testCase);
 }
@@ -2382,20 +2294,18 @@ test "Thread.valueType" {
             });
             defer state.deinit();
 
-            const thread = state.asThread();
-
-            thread.pushAnyType(@as(f64, 3.14));
+            state.pushAnyType(@as(f64, 3.14));
             try std.testing.expectEqual(
                 .number,
-                thread.valueType(1),
+                state.valueType(1),
             );
-            try recoverCall(Thread.pushAnyType, .{
-                thread,
+            try recoverCall(State.pushAnyType, .{
+                state,
                 @as([]const u8, "foo bar baz"),
             });
             try std.testing.expectEqual(
                 .string,
-                thread.valueType(2),
+                state.valueType(2),
             );
         }
     }.testCase);
@@ -2410,23 +2320,21 @@ test "Thread.typeName" {
             });
             defer state.deinit();
 
-            const thread = state.asThread();
-
             try std.testing.expectEqualStrings(
                 "boolean",
-                std.mem.span(thread.typeName(.boolean)),
+                std.mem.span(state.typeName(.boolean)),
             );
             try std.testing.expectEqualStrings(
                 "number",
-                std.mem.span(thread.typeName(.number)),
+                std.mem.span(state.typeName(.number)),
             );
             try std.testing.expectEqualStrings(
                 "function",
-                std.mem.span(thread.typeName(.function)),
+                std.mem.span(state.typeName(.function)),
             );
             try std.testing.expectEqualStrings(
                 "string",
-                std.mem.span(thread.typeName(.string)),
+                std.mem.span(state.typeName(.string)),
             );
         }
     }.testCase);
@@ -2441,11 +2349,10 @@ test "Thread.getGlobal" {
             });
             defer state.deinit();
 
-            const thread = state.asThread();
-            try recoverCall(Thread.openBase, .{thread});
-            try recoverCall(Thread.getGlobal, .{ thread, "_G" });
-            try recoverCall(Thread.getGlobal, .{ thread, "_G" });
-            try std.testing.expect(thread.equal(-1, -2));
+            try recoverCall(State.openBase, .{state});
+            try recoverCall(State.getGlobal, .{ state, "_G" });
+            try recoverCall(State.getGlobal, .{ state, "_G" });
+            try std.testing.expect(state.equal(-1, -2));
         }
     }.testCase);
 }
@@ -2459,10 +2366,9 @@ test "Thread.getGlobalAnyType" {
             });
             defer state.deinit();
 
-            const thread = state.asThread();
-            try recoverCall(Thread.openBase, .{thread});
+            try recoverCall(State.openBase, .{state});
 
-            const value = try recoverGetGlobalValue(thread, "_G");
+            const value = try recoverGetGlobalValue(state, "_G");
             _ = value.?.table;
         }
     }.testCase);
@@ -2477,15 +2383,14 @@ test "Thread.setGlobalAnyType" {
             });
             defer state.deinit();
 
-            const thread = state.asThread();
-            try recoverCall(Thread.openBase, .{thread});
+            try recoverCall(State.openBase, .{state});
 
-            var value = try recoverGetGlobalValue(thread, "_G");
+            var value = try recoverGetGlobalValue(state, "_G");
             _ = value.?.table;
 
-            thread.setGlobalAnyType("_G", @as(f32, 1));
+            state.setGlobalAnyType("_G", @as(f32, 1));
 
-            value = try recoverGetGlobalValue(thread, "_G");
+            value = try recoverGetGlobalValue(state, "_G");
             _ = value.?.number;
         }
     }.testCase);
@@ -2500,20 +2405,19 @@ test "Thread.isXXX" {
             });
             defer state.deinit();
 
-            const thread = state.asThread();
-            try recoverCall(Thread.openBase, .{thread});
+            try recoverCall(State.openBase, .{state});
 
-            try std.testing.expect(!thread.isBoolean(Global));
-            try std.testing.expect(!thread.isCFunction(Global));
-            try std.testing.expect(!thread.isFunction(Global));
-            try std.testing.expect(!thread.isNil(Global));
-            try std.testing.expect(!thread.isNone(Global));
-            try std.testing.expect(!thread.isNoneOrNil(Global));
-            try std.testing.expect(!thread.isNumber(Global));
-            try std.testing.expect(thread.isTable(Global));
-            try std.testing.expect(!thread.isThread(Global));
-            try std.testing.expect(!thread.isUserData(Global));
-            try std.testing.expect(!thread.isLightUserData(Global));
+            try std.testing.expect(!state.isBoolean(Global));
+            try std.testing.expect(!state.isCFunction(Global));
+            try std.testing.expect(!state.isFunction(Global));
+            try std.testing.expect(!state.isNil(Global));
+            try std.testing.expect(!state.isNone(Global));
+            try std.testing.expect(!state.isNoneOrNil(Global));
+            try std.testing.expect(!state.isNumber(Global));
+            try std.testing.expect(state.isTable(Global));
+            try std.testing.expect(!state.isThread(Global));
+            try std.testing.expect(!state.isUserData(Global));
+            try std.testing.expect(!state.isLightUserData(Global));
         }
     }.testCase);
 }
@@ -2527,16 +2431,15 @@ test "Thread.toXXX" {
             });
             defer state.deinit();
 
-            const thread = state.asThread();
-            try recoverCall(Thread.openBase, .{thread});
+            try recoverCall(State.openBase, .{state});
 
-            try std.testing.expect(thread.toBoolean(Global));
-            try std.testing.expect(thread.toCFunction(Global) == null);
-            try std.testing.expect(thread.toNumber(Global) == 0);
-            try std.testing.expect(thread.toThread(Global) == null);
-            try std.testing.expect(thread.toUserData(Global) == null);
-            try std.testing.expect(thread.toPointer(Global) != null);
-            try std.testing.expect(thread.toString(Global) == null);
+            try std.testing.expect(state.toBoolean(Global));
+            try std.testing.expect(state.toCFunction(Global) == null);
+            try std.testing.expect(state.toNumber(Global) == 0);
+            try std.testing.expect(state.toThread(Global) == null);
+            try std.testing.expect(state.toUserData(Global) == null);
+            try std.testing.expect(state.toPointer(Global) != null);
+            try std.testing.expect(state.toString(Global) == null);
         }
     }.testCase);
 }
@@ -2550,12 +2453,10 @@ test "Thread.objLen" {
             });
             defer state.deinit();
 
-            const thread = state.asThread();
-
-            try recoverCall(Thread.pushAnyType, .{ thread, @as([]const u8, "foo bar baz") });
+            try recoverCall(State.pushAnyType, .{ state, @as([]const u8, "foo bar baz") });
             try std.testing.expectEqual(
                 11,
-                thread.objLen(-1),
+                state.objLen(-1),
             );
         }
     }.testCase);
@@ -2570,76 +2471,74 @@ test "Thread.openXXX" {
             });
             defer state.deinit();
 
-            const thread = state.asThread();
-
             try std.testing.expect(
-                try recoverGetGlobalValue(thread, "_G") == null,
+                try recoverGetGlobalValue(state, "_G") == null,
             );
             try std.testing.expect(
-                try recoverGetGlobalValue(thread, "coroutine") == null,
+                try recoverGetGlobalValue(state, "coroutine") == null,
             );
-            try recoverCall(Thread.openBase, .{thread});
+            try recoverCall(State.openBase, .{state});
             try std.testing.expect(
-                try recoverGetGlobalValue(thread, "_G") != null,
+                try recoverGetGlobalValue(state, "_G") != null,
             );
             try std.testing.expect(
-                try recoverGetGlobalValue(thread, "coroutine") != null,
+                try recoverGetGlobalValue(state, "coroutine") != null,
             );
 
             try std.testing.expect(
-                try recoverGetGlobalValue(thread, "package") == null,
+                try recoverGetGlobalValue(state, "package") == null,
             );
-            try recoverCall(Thread.openPackage, .{thread});
+            try recoverCall(State.openPackage, .{state});
             try std.testing.expect(
-                try recoverGetGlobalValue(thread, "package") != null,
-            );
-
-            try std.testing.expect(
-                try recoverGetGlobalValue(thread, "table") == null,
-            );
-            try recoverCall(Thread.openTable, .{thread});
-            try std.testing.expect(
-                try recoverGetGlobalValue(thread, "table") != null,
+                try recoverGetGlobalValue(state, "package") != null,
             );
 
             try std.testing.expect(
-                try recoverGetGlobalValue(thread, "string") == null,
+                try recoverGetGlobalValue(state, "table") == null,
             );
-            try recoverCall(Thread.openString, .{thread});
+            try recoverCall(State.openTable, .{state});
             try std.testing.expect(
-                try recoverGetGlobalValue(thread, "string") != null,
-            );
-
-            try std.testing.expect(
-                try recoverGetGlobalValue(thread, "io") == null,
-            );
-            try recoverCall(Thread.openIO, .{thread});
-            try std.testing.expect(
-                try recoverGetGlobalValue(thread, "io") != null,
+                try recoverGetGlobalValue(state, "table") != null,
             );
 
             try std.testing.expect(
-                try recoverGetGlobalValue(thread, "os") == null,
+                try recoverGetGlobalValue(state, "string") == null,
             );
-            try recoverCall(Thread.openOS, .{thread});
+            try recoverCall(State.openString, .{state});
             try std.testing.expect(
-                try recoverGetGlobalValue(thread, "os") != null,
-            );
-
-            try std.testing.expect(
-                try recoverGetGlobalValue(thread, "math") == null,
-            );
-            try recoverCall(Thread.openMath, .{thread});
-            try std.testing.expect(
-                try recoverGetGlobalValue(thread, "math") != null,
+                try recoverGetGlobalValue(state, "string") != null,
             );
 
             try std.testing.expect(
-                try recoverGetGlobalValue(thread, "debug") == null,
+                try recoverGetGlobalValue(state, "io") == null,
             );
-            try recoverCall(Thread.openDebug, .{thread});
+            try recoverCall(State.openIO, .{state});
             try std.testing.expect(
-                try recoverGetGlobalValue(thread, "debug") != null,
+                try recoverGetGlobalValue(state, "io") != null,
+            );
+
+            try std.testing.expect(
+                try recoverGetGlobalValue(state, "os") == null,
+            );
+            try recoverCall(State.openOS, .{state});
+            try std.testing.expect(
+                try recoverGetGlobalValue(state, "os") != null,
+            );
+
+            try std.testing.expect(
+                try recoverGetGlobalValue(state, "math") == null,
+            );
+            try recoverCall(State.openMath, .{state});
+            try std.testing.expect(
+                try recoverGetGlobalValue(state, "math") != null,
+            );
+
+            try std.testing.expect(
+                try recoverGetGlobalValue(state, "debug") == null,
+            );
+            try recoverCall(State.openDebug, .{state});
+            try std.testing.expect(
+                try recoverGetGlobalValue(state, "debug") != null,
             );
         }
     }.testCase);
@@ -2654,17 +2553,15 @@ test "Thread.loadFile" {
             });
             defer state.deinit();
 
-            const thread = state.asThread();
+            try recoverCall(State.loadFile, .{ state, "src/testdata/add.lua" });
+            try recoverCall(State.call, .{ state, 0, 0 });
 
-            try recoverCall(Thread.loadFile, .{ thread, "src/testdata/add.lua" });
-            try recoverCall(Thread.call, .{ thread, 0, 0 });
+            try recoverCall(State.getGlobal, .{ state, "add" });
+            state.pushInteger(1);
+            state.pushInteger(2);
 
-            try recoverCall(Thread.getGlobal, .{ thread, "add" });
-            thread.pushInteger(1);
-            thread.pushInteger(2);
-
-            try recoverCall(Thread.call, .{ thread, 2, 1 });
-            try std.testing.expectEqual(3, thread.toInteger(-1));
+            try recoverCall(State.call, .{ state, 2, 1 });
+            try std.testing.expectEqual(3, state.toInteger(-1));
         }
     }.testCase);
 }
@@ -2678,15 +2575,13 @@ test "Thread.doFile" {
             });
             defer state.deinit();
 
-            const thread = state.asThread();
+            try recoverCall(State.doFile, .{ state, "src/testdata/add.lua" });
 
-            try recoverCall(Thread.doFile, .{ thread, "src/testdata/add.lua" });
-
-            try recoverCall(Thread.getGlobal, .{ thread, "add" });
-            thread.pushInteger(1);
-            thread.pushInteger(2);
-            try recoverCall(Thread.call, .{ thread, 2, 1 });
-            try std.testing.expectEqual(3, thread.toInteger(-1));
+            try recoverCall(State.getGlobal, .{ state, "add" });
+            state.pushInteger(1);
+            state.pushInteger(2);
+            try recoverCall(State.call, .{ state, 2, 1 });
+            try std.testing.expectEqual(3, state.toInteger(-1));
         }
     }.testCase);
 }
@@ -2700,11 +2595,9 @@ test "Thread.loadString" {
             });
             defer state.deinit();
 
-            const thread = state.asThread();
-
-            try thread.loadString("return 1 + 2", null);
-            thread.call(0, 1);
-            try std.testing.expectEqual(3, thread.toInteger(-1));
+            try state.loadString("return 1 + 2", null);
+            state.call(0, 1);
+            try std.testing.expectEqual(3, state.toInteger(-1));
         }
     }.testCase);
 }
@@ -2718,10 +2611,8 @@ test "Thread.doString" {
             });
             defer state.deinit();
 
-            const thread = state.asThread();
-
-            try thread.doString("return 1 + 2", null);
-            try std.testing.expectEqual(3, thread.toInteger(-1));
+            try state.doString("return 1 + 2", null);
+            try std.testing.expectEqual(3, state.toInteger(-1));
         }
     }.testCase);
 }

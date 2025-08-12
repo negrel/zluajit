@@ -4,7 +4,7 @@ const recover = @import("./recover.zig");
 const c = @import("./c.zig").c;
 const zlua = @import("./root.zig");
 
-const Thread = zlua.Thread;
+const State = zlua.State;
 const Value = zlua.Value;
 pub const recoverCall = recover.call;
 
@@ -43,14 +43,14 @@ pub fn recoverableLuaPanic(lua: ?*c.lua_State) callconv(.c) c_int {
     return 0;
 }
 
-pub fn recoverGetGlobalValue(thread: Thread, name: [*c]const u8) !?Value {
+pub fn recoverGetGlobalValue(state: State, name: [*c]const u8) !?Value {
     std.debug.assert(builtin.is_test);
 
     return recover.call(struct {
-        fn getGlobalAnyType(th: Thread, n: [*c]const u8) ?Value {
-            return th.getGlobalAnyType(n, Value);
+        fn getGlobalAnyType(st: State, n: [*c]const u8) ?Value {
+            return st.getGlobalAnyType(n, Value);
         }
-    }.getGlobalAnyType, .{ thread, name });
+    }.getGlobalAnyType, .{ state, name });
 }
 
 /// ProgressiveAllocator is a wrapper around [std.heap.DebugAllocator] that
