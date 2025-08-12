@@ -413,6 +413,8 @@ pub const State = struct {
     /// If the value at the given acceptable index is a full userdata, returns
     /// its block address. If the value is a light userdata, returns its
     /// pointer. Otherwise, returns null.
+    ///
+    /// This is the same as lua_touserdata.
     pub fn toUserData(self: Self, idx: c_int, comptime T: type) ?*T {
         return @ptrCast(@alignCast(c.lua_touserdata(self.lua, idx)));
     }
@@ -797,15 +799,23 @@ pub const State = struct {
     }
 
     /// Checks whether the function argument narg is a userdata of the type
-    /// T (see Thread.newMetaTable).
+    /// `tname` (see Thread.newMetaTable).
     ///
-    /// This is the same as luaL_checkudata.
+    /// If `tname` is null, @typeName(T) is used as `tname`.
+    ///
+    ///
+    /// This is the similar to luaL_checkudata.
     pub fn checkUserData(
         self: Self,
         narg: c_int,
         comptime T: type,
+        tname: [*c]const u8,
     ) *T {
-        return @ptrCast(@alignCast(c.luaL_checkudata(self.lua, narg, @typeName(T)).?));
+        return @ptrCast(@alignCast(c.luaL_checkudata(
+            self.lua,
+            narg,
+            if (tname != null) tname else @typeName(T),
+        ).?));
     }
 
     /// Checks whether the argument `narg` is of type T and returns it.
@@ -850,7 +860,7 @@ pub const State = struct {
                 switch (@typeInfo(T)) {
                     .pointer => |info| {
                         return switch (info.size) {
-                            .one => return self.checkUserData(narg, info.child),
+                            .one => return self.checkUserData(narg, info.child, null),
                             else => @compileError("pointer type of size " ++ @tagName(info.size) ++ " is not supported (" ++ @typeName(T) ++ ")"),
                         };
                     },
@@ -1543,16 +1553,25 @@ pub const State = struct {
         c.luaL_openlibs(self.lua);
     }
 
-    /// If the registry already has a metatable for type T, returns false.
+    /// If the registry already has a the key `tname`, returns false.
     /// Otherwise, creates a new table to be used as a metatable for userdata,
-    /// adds it to the registry, and returns true.
+    /// adds it to the registry with key `tname`, and returns true.
     ///
     /// In both cases pushes onto the stack the final value associated with
-    /// T in the registry.
+    /// `tname` in the registry.
+    ///
+    /// If `tname` is null, @typeName(T) is used as `tname`.
     ///
     /// This is the same as luaL_newmetatable.
-    pub fn newMetaTable(self: Self, comptime T: type) bool {
-        return c.luaL_newmetatable(self.lua, @typeName(T)) != 0;
+    pub fn newMetaTable(
+        self: Self,
+        comptime T: type,
+        tname: [*c]const u8,
+    ) bool {
+        return c.luaL_newmetatable(
+            self.lua,
+            if (tname != null) tname else @typeName(T),
+        ) != 0;
     }
 };
 
