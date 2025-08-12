@@ -782,19 +782,20 @@ pub const State = struct {
     ) T {
         const info = @typeInfo(T).@"enum";
 
-        const lst: [info.fields.len:0][*c]const u8 = undefined;
-        inline for (&lst, info.fields) |*l, f| {
+        var enumValues: [info.fields.len:0]usize = undefined;
+        var lst: [info.fields.len:0][*c]const u8 = undefined;
+        inline for (&lst, &enumValues, info.fields) |*l, *v, f| {
             l.* = f.name;
+            v.* = f.value;
         }
 
         const idx = self.checkOption(
-            self.lua,
             narg,
-            if (def) @tagName(def) else null,
-            lst,
+            if (def != null) @tagName(def.?) else null,
+            lst[0..],
         );
 
-        return @enumFromInt(info.fields[idx].value);
+        return @enumFromInt(enumValues[@as(usize, @intCast(idx))]);
     }
 
     /// Checks whether the function argument narg is a userdata of the type
@@ -810,7 +811,7 @@ pub const State = struct {
     }
 
     /// Checks whether the argument `narg` is of type T and returns it.
-    pub fn checkAnyType(self: Self, narg: c_int, comptime T: type, def: ?T) T {
+    pub fn checkAnyType(self: Self, narg: c_int, comptime T: type) T {
         switch (T) {
             bool => return self.isBoolean(narg) or self.typeError(narg, "boolean"),
             CFunction => {
@@ -851,24 +852,16 @@ pub const State = struct {
                 switch (@typeInfo(T)) {
                     .pointer => |info| {
                         return switch (info.size) {
-                            .one => return self.checkAnyType(
-                                narg,
-                                info.child,
-                                if (def) def.* else null,
-                            ),
+                            .one => return self.checkAnyType(narg, info.child),
                             else => @compileError("pointer type of size " ++ @tagName(info.size) ++ " is not supported (" ++ @typeName(T) ++ ")"),
                         };
                     },
-                    .@"enum" => return self.checkEnum(narg, T, def),
+                    .@"enum" => return self.checkEnum(narg, T, null),
                     .optional => |info| {
                         if (self.isNil(narg)) {
                             return null;
                         }
-                        return self.checkAnyType(
-                            narg,
-                            info.child,
-                            if (def) def.* else null,
-                        ) orelse def;
+                        return self.checkAnyType(narg, info.child);
                     },
                     else => {},
                 }
@@ -1846,7 +1839,7 @@ pub fn wrapFn(func: anytype) CFunction {
                     arg.* = th;
                     threadForwarded = true;
                     continue;
-                } else arg.* = th.checkAnyType(i, p.type.?, null);
+                } else arg.* = th.checkAnyType(i, p.type.?);
                 i += 1;
             }
 
