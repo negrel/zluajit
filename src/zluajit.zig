@@ -703,9 +703,9 @@ pub const State = struct {
     /// and caveats of that function apply here.
     ///
     /// This is the same as luaL_checkstring.
-    pub fn checkString(self: Self, narg: c_int) ?[]const u8 {
+    pub fn checkString(self: Self, narg: c_int) []const u8 {
         var len: usize = 0;
-        const str = c.luaL_checklstring(self.lua, narg, &len) orelse return null;
+        const str = c.luaL_checklstring(self.lua, narg, &len).?;
         return str[0..len];
     }
 
@@ -764,7 +764,7 @@ pub const State = struct {
         narg: c_int,
         comptime T: type,
         def: ?T,
-    ) ?T {
+    ) T {
         const info = @typeInfo(T).@"enum";
 
         const lst: [info.fields.len:0][*c]const u8 = undefined;
@@ -791,7 +791,7 @@ pub const State = struct {
         narg: c_int,
         tname: [*c]const u8,
     ) *anyopaque {
-        return c.luaL_checkudata(self.lua, narg, tname);
+        return c.luaL_checkudata(self.lua, narg, tname).?;
     }
 
     /// Checks whether the argument `narg` is of type T and returns it.
@@ -872,7 +872,7 @@ pub const State = struct {
     /// This is the same as luaL_optlstring.
     pub fn optString(self: Self, arg: c_int, def: [*c]const u8) []const u8 {
         var len: usize = 0;
-        const str = c.luaL_optlstring(self.lua, arg, def, &len);
+        const str = c.luaL_optlstring(self.lua, arg, def, &len).?;
         return str[0..len];
     }
 
