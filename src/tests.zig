@@ -7,6 +7,8 @@ const z = @import("zluajit");
 const testing = std.testing;
 const recoverCall = recover.call;
 
+var panicMsg: []const u8 = "";
+
 /// Execute provided test case with a memory limited allocator, increasing it's
 /// limit each time test case returns an [OutOfMemory] error or panics.
 fn withProgressiveAllocator(tcase: fn (*std.mem.Allocator) anyerror!void) !void {
@@ -19,6 +21,13 @@ fn withProgressiveAllocator(tcase: fn (*std.mem.Allocator) anyerror!void) !void 
     while (true) {
         tcase(&alloc) catch |err| {
             if (err == std.mem.Allocator.Error.OutOfMemory or err == error.Panic) {
+                if (err == error.Panic) {
+                    if (!std.mem.eql(u8, "not enough memory", panicMsg))
+                        @panic(panicMsg);
+                    std.heap.c_allocator.free(panicMsg);
+                    panicMsg = "";
+                }
+
                 palloc.progress();
                 continue;
             }
@@ -34,11 +43,14 @@ fn withProgressiveAllocator(tcase: fn (*std.mem.Allocator) anyerror!void) !void 
 fn recoverableLuaPanic(lua: ?*z.c.lua_State) callconv(.c) c_int {
     std.debug.assert(builtin.is_test);
 
-    var len: usize = 0;
-    const str = z.c.lua_tolstring(lua, -1, &len);
-    if (str != null) {
-        recover.panic.call(str[0..len], @returnAddress());
-    } else recover.panic.call("lua panic", @returnAddress());
+    const th = z.State.initFromCPointer(lua.?);
+
+    if (th.popAnyType([]const u8)) |msg| {
+        panicMsg = std.heap.c_allocator.dupe(u8, msg) catch @panic("OOM");
+        recover.panic.call(panicMsg, @returnAddress());
+    } else {
+        recover.panic.call("lua panic", @returnAddress());
+    }
     return 0;
 }
 
@@ -1164,4 +1176,33 @@ test "wrapFn" {
     state.pushAnyType(thread);
     state.call(1, 1);
     try testing.expectEqual(thread.lua, state.popAnyType(z.State).?.lua);
+}
+
+test "newUserData" {
+    try withProgressiveAllocator(struct {
+        fn testCase(alloc: *std.mem.Allocator) anyerror!void {
+            var state = try z.State.init(.{
+                .allocator = alloc,
+                .panicHandler = recoverableLuaPanic,
+            });
+            defer state.deinit();
+
+            try testing.expect(!state.isYieldable());
+
+            const UserData = struct {
+                a: i32,
+            };
+
+            _ = try recoverCall(struct {
+                fn func(st: z.State) *UserData {
+                    return st.newUserData(UserData);
+                }
+            }.func, .{state});
+            _ = try recoverCall(z.State.checkValueType, .{
+                state,
+                -1,
+                .userdata,
+            });
+        }
+    }.testCase);
 }
