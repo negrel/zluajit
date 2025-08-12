@@ -1003,9 +1003,9 @@ pub const State = struct {
         c.lua_newtable(self.lua);
     }
 
-    /// This function allocates a new block of memory with the given size,
-    /// pushes onto the stack a new full userdata with the block address, and
-    /// returns this address.
+    /// This function allocates a new block of memory for type T, pushes onto
+    /// the stack a new full userdata with the block address, and returns this
+    /// address.
     ///
     /// Userdata represent C values in Lua. A full userdata represents a block
     /// of memory. It is an object (like a table): you must create it, it can
@@ -1017,8 +1017,9 @@ pub const State = struct {
     /// collected again then Lua frees its corresponding memory.
     ///
     /// This is the same as lua_newuserdata.
-    pub fn newUserData(self: Self, size: usize) ?*anyopaque {
-        return c.lua_newuserdata(self.lua, size);
+    pub fn newUserData(self: Self, comptime T: type) *T {
+        // LuaJIT panic if not enough memory.
+        return @ptrCast(@alignCast(c.lua_newuserdata(self.lua, @sizeOf(T)).?));
     }
 
     /// Pushes onto the stack the metatable of the value at the given acceptable
