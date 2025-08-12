@@ -9,8 +9,16 @@ pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
     const shared = b.option(bool, "shared", "Build shared library instead of static") orelse false;
+    const lua52_compat = b.option(bool, "lua52-compat", "Enable Lua 5.2 compatibility layer") orelse false;
 
-    const luajitLib = luajit.configure(b, target, optimize, b.dependency("luajit", .{}), shared);
+    const luajitLib = luajit.configure(
+        b,
+        target,
+        optimize,
+        b.dependency("luajit", .{}),
+        shared,
+        lua52_compat,
+    );
 
     const module = b.addModule("zlua", .{
         .root_source_file = b.path("src/root.zig"),
