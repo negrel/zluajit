@@ -1,7 +1,7 @@
 //! Unopiniated Zig bindings for LuaJIT.
 //!
-//! This library provides a zero-cost, idiomatic, type-safe and convenient API
-//! to interact with Lua C API using Zig.
+//! This library provides a zero-cost, idiomatic and convenient API to interact
+//! with Lua C API using Zig.
 
 const std = @import("std");
 const builtin = @import("builtin");
@@ -477,6 +477,10 @@ pub const State = struct {
             },
             else => {
                 switch (@typeInfo(T)) {
+                    .pointer => {
+                        const ptr = self.toAnyType(*anyopaque, idx) orelse return null;
+                        return @ptrCast(@alignCast(ptr));
+                    },
                     .@"enum" => |info| {
                         if (self.valueType(idx) != .string) return null;
                         const str = self.toString(idx);
