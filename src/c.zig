@@ -1,5 +1,6 @@
-pub const c = @cImport({
+pub usingnamespace @cImport({
     @cInclude("lua.h");
     @cInclude("lauxlib.h");
     @cInclude("lualib.h");
+    @cInclude("luajit.h");
 });
