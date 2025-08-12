@@ -810,7 +810,7 @@ pub const State = struct {
     }
 
     /// Checks whether the argument `narg` is of type T and returns it.
-    pub fn checkAnyType(self: Self, narg: c_int, comptime T: type) T {
+    pub fn checkAnyType(self: Self, narg: c_int, comptime T: type, def: ?T) T {
         switch (T) {
             bool => return self.isBoolean(narg) or self.typeError(narg, "boolean"),
             CFunction => {
@@ -851,15 +851,24 @@ pub const State = struct {
                 switch (@typeInfo(T)) {
                     .pointer => |info| {
                         return switch (info.size) {
-                            .one => return self.checkAnyType(narg, info.child),
+                            .one => return self.checkAnyType(
+                                narg,
+                                info.child,
+                                if (def) def.* else null,
+                            ),
                             else => @compileError("pointer type of size " ++ @tagName(info.size) ++ " is not supported (" ++ @typeName(T) ++ ")"),
                         };
                     },
+                    .@"enum" => return self.checkEnum(narg, T, def),
                     .optional => |info| {
                         if (self.isNil(narg)) {
                             return null;
                         }
-                        return self.checkAnyType(narg, info.child);
+                        return self.checkAnyType(
+                            narg,
+                            info.child,
+                            if (def) def.* else null,
+                        ) orelse def;
                     },
                     else => {},
                 }
@@ -1837,7 +1846,7 @@ pub fn wrapFn(func: anytype) CFunction {
                     arg.* = th;
                     threadForwarded = true;
                     continue;
-                } else arg.* = th.checkAnyType(i, p.type.?);
+                } else arg.* = th.checkAnyType(i, p.type.?, null);
                 i += 1;
             }
 
