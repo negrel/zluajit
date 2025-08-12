@@ -1,9 +1,10 @@
 const std = @import("std");
 const builtin = @import("builtin");
-const recover = @import("./recover.zig");
 
+const recover = @import("./recover.zig");
 const z = @import("zluajit");
 
+const testing = std.testing;
 const recoverCall = recover.call;
 
 /// Execute provided test case with a memory limited allocator, increasing it's
@@ -181,9 +182,9 @@ test "State.newThread" {
             defer state.deinit();
 
             const thread = try recoverCall(z.State.newThread, .{state});
-            try std.testing.expect(!thread.isMain());
-            try std.testing.expectEqual(0, thread.top());
-            try std.testing.expectEqual(.ok, thread.status());
+            try testing.expect(!thread.isMain());
+            try testing.expectEqual(0, thread.top());
+            try testing.expectEqual(.ok, thread.status());
         }
     }.testCase);
 }
@@ -200,12 +201,12 @@ test "State.pushAnyType/Thread.popAnyType/Thread.valueType" {
             // Bool.
             {
                 try recoverCall(z.State.pushAnyType, .{ state, true });
-                try std.testing.expectEqual(state.valueType(-1), .boolean);
-                try std.testing.expectEqual(true, state.popAnyType(bool));
+                try testing.expectEqual(state.valueType(-1), .boolean);
+                try testing.expectEqual(true, state.popAnyType(bool));
 
                 try recoverCall(z.State.pushAnyType, .{ state, false });
-                try std.testing.expectEqual(state.valueType(-1), .boolean);
-                try std.testing.expectEqual(false, state.popAnyType(bool));
+                try testing.expectEqual(state.valueType(-1), .boolean);
+                try testing.expectEqual(false, state.popAnyType(bool));
             }
 
             // Function.
@@ -217,8 +218,8 @@ test "State.pushAnyType/Thread.popAnyType/Thread.valueType" {
                 };
 
                 try recoverCall(z.State.pushAnyType, .{ state, &ns.func });
-                try std.testing.expectEqual(state.valueType(-1), .function);
-                try std.testing.expectEqual(
+                try testing.expectEqual(state.valueType(-1), .function);
+                try testing.expectEqual(
                     z.FunctionRef.init(z.ValueRef.init(state, state.top())),
                     state.popAnyType(z.FunctionRef),
                 );
@@ -227,22 +228,22 @@ test "State.pushAnyType/Thread.popAnyType/Thread.valueType" {
             // State / c.lua_State
             {
                 try recoverCall(z.State.pushAnyType, .{ state, state });
-                try std.testing.expectEqual(state.valueType(-1), .thread);
-                try std.testing.expectEqual(
+                try testing.expectEqual(state.valueType(-1), .thread);
+                try testing.expectEqual(
                     state,
                     state.popAnyType(z.State),
                 );
 
                 try recoverCall(z.State.pushAnyType, .{ state, state.lua });
-                try std.testing.expectEqual(state.valueType(-1), .thread);
-                try std.testing.expectEqual(
+                try testing.expectEqual(state.valueType(-1), .thread);
+                try testing.expectEqual(
                     state.lua,
                     state.popAnyType(*z.c.lua_State),
                 );
 
                 try recoverCall(z.State.pushAnyType, .{ state, state.lua });
-                try std.testing.expectEqual(state.valueType(-1), .thread);
-                try std.testing.expectEqual(
+                try testing.expectEqual(state.valueType(-1), .thread);
+                try testing.expectEqual(
                     state,
                     state.popAnyType(z.State),
                 );
@@ -253,14 +254,14 @@ test "State.pushAnyType/Thread.popAnyType/Thread.valueType" {
                 try recoverCall(z.State.pushAnyType, .{
                     state, @as([]const u8, "foo bar baz"),
                 });
-                try std.testing.expectEqual(state.valueType(-1), .string);
-                try std.testing.expectEqualStrings(
+                try testing.expectEqual(state.valueType(-1), .string);
+                try testing.expectEqualStrings(
                     "foo bar baz",
                     state.popAnyType([]const u8).?,
                 );
 
                 try recoverCall(z.State.pushAnyType, .{ state, @as(f64, 1) });
-                try std.testing.expectEqualStrings(
+                try testing.expectEqualStrings(
                     "1",
                     (try recoverCall(struct {
                         fn popString(th: z.State) ?[]const u8 {
@@ -276,57 +277,57 @@ test "State.pushAnyType/Thread.popAnyType/Thread.valueType" {
                     z.State.pushAnyType,
                     .{ state, @as(f32, 1) },
                 );
-                try std.testing.expectEqual(state.valueType(-1), .number);
-                try std.testing.expectEqual(1, state.popAnyType(f32));
+                try testing.expectEqual(state.valueType(-1), .number);
+                try testing.expectEqual(1, state.popAnyType(f32));
 
                 try recoverCall(
                     z.State.pushAnyType,
                     .{ state, @as(f64, 1) },
                 );
-                try std.testing.expectEqual(state.valueType(-1), .number);
-                try std.testing.expectEqual(1, state.popAnyType(f64));
+                try testing.expectEqual(state.valueType(-1), .number);
+                try testing.expectEqual(1, state.popAnyType(f64));
 
                 try recoverCall(z.State.pushAnyType, .{ state, @as(f32, 1) });
-                try std.testing.expectEqual(state.valueType(-1), .number);
-                try std.testing.expectEqual(1, state.popAnyType(f64));
+                try testing.expectEqual(state.valueType(-1), .number);
+                try testing.expectEqual(1, state.popAnyType(f64));
 
                 try recoverCall(z.State.pushAnyType, .{ state, @as(f64, 1) });
-                try std.testing.expectEqual(state.valueType(-1), .number);
-                try std.testing.expectEqual(1, state.popAnyType(f32));
+                try testing.expectEqual(state.valueType(-1), .number);
+                try testing.expectEqual(1, state.popAnyType(f32));
             }
 
             // Light userdata.
             {
                 const pi: *anyopaque = @ptrCast(@constCast(&std.math.pi));
                 try recoverCall(z.State.pushAnyType, .{ state, pi });
-                try std.testing.expectEqual(
+                try testing.expectEqual(
                     state.valueType(-1),
                     .lightuserdata,
                 );
-                try std.testing.expectEqual(pi, state.popAnyType(*anyopaque).?);
+                try testing.expectEqual(pi, state.popAnyType(*anyopaque).?);
             }
 
             // Pointers.
             {
                 const pi: f64 = std.math.pi;
                 try recoverCall(z.State.pushAnyType, .{ state, pi });
-                try std.testing.expectEqual(state.valueType(-1), .number);
-                try std.testing.expectEqual(pi, state.popAnyType(f64));
+                try testing.expectEqual(state.valueType(-1), .number);
+                try testing.expectEqual(pi, state.popAnyType(f64));
             }
 
             // Value.
             {
                 const value: z.Value = .{ .number = std.math.pi };
                 try recoverCall(z.State.pushAnyType, .{ state, value });
-                try std.testing.expectEqual(state.valueType(-1), .number);
-                try std.testing.expectEqual(
+                try testing.expectEqual(state.valueType(-1), .number);
+                try testing.expectEqual(
                     value,
                     state.popAnyType(z.Value),
                 );
 
                 try recoverCall(z.State.pushAnyType, .{ state, value });
-                try std.testing.expectEqual(state.valueType(-1), .number);
-                try std.testing.expectEqual(
+                try testing.expectEqual(state.valueType(-1), .number);
+                try testing.expectEqual(
                     value.number,
                     state.popAnyType(f64),
                 );
@@ -349,16 +350,30 @@ test "State.pushZigFunction" {
     state.pushInteger(1);
     state.pushInteger(2);
     state.call(2, 1);
-    try std.testing.expectEqual(3, state.toInteger(-1));
+    try testing.expectEqual(3, state.toInteger(-1));
 
     // Missing argument.
     state.pushZigFunction(zfunc);
     state.pushInteger(1);
     state.pCall(1, 1, 0) catch {
-        try std.testing.expectEqualStrings(
+        try testing.expectEqualStrings(
             "bad argument #2 to '?' (number expected, got no value)",
             state.popAnyType([]const u8).?,
         );
+
+        // Return Zig error.
+        state.pushZigFunction(struct {
+            fn fail() !void {
+                return std.mem.Allocator.Error.OutOfMemory;
+            }
+        }.fail);
+        state.pCall(0, 0, 0) catch {
+            try testing.expectEqualStrings(
+                "OutOfMemory",
+                state.popAnyType([]const u8).?,
+            );
+        };
+
         return;
     };
 
@@ -380,7 +395,7 @@ test "State.error" {
     state.pushZigFunction(zfunc);
     _ = state.pushThread();
     state.pCall(1, 0, 0) catch {
-        try std.testing.expectEqualStrings(
+        try testing.expectEqualStrings(
             "a runtime error",
             state.popAnyType([]const u8).?,
         );
@@ -402,7 +417,7 @@ test "State.concat" {
             try recoverCall(z.State.pushNumber, .{ state, 100 });
             try recoverCall(z.State.pushString, .{ state, " foo" });
             try recoverCall(z.State.concat, .{ state, 2 });
-            try std.testing.expectEqualStrings(
+            try testing.expectEqualStrings(
                 "100 foo",
                 state.popAnyType([]const u8).?,
             );
@@ -435,18 +450,18 @@ test "State.next" {
             state.pushNil(); // first key
             while (state.next(idx)) {
                 i += 1;
-                try std.testing.expectEqual(
+                try testing.expectEqual(
                     i,
                     // removes 'value'; keeps 'key' for next iteration
                     state.popAnyType(z.Integer),
                 );
-                try std.testing.expectEqual(
+                try testing.expectEqual(
                     i,
                     state.toAnyType(z.Integer, -1),
                 );
             }
 
-            try std.testing.expectEqual(3, i);
+            try testing.expectEqual(3, i);
         }
     }.testCase);
 }
@@ -460,9 +475,9 @@ test "State.top/Thread.setTop" {
             });
             defer state.deinit();
 
-            try std.testing.expectEqual(0, state.top());
+            try testing.expectEqual(0, state.top());
             state.setTop(10);
-            try std.testing.expectEqual(10, state.top());
+            try testing.expectEqual(10, state.top());
         }
     }.testCase);
 }
@@ -480,30 +495,30 @@ test "State.pushValue" {
                 state,
                 @as(f64, std.math.pi),
             });
-            try std.testing.expectEqual(1, state.top());
+            try testing.expectEqual(1, state.top());
 
             try recoverCall(z.State.pushAnyType, .{
                 state,
                 @as([]const u8, "foo bar baz"),
             });
-            try std.testing.expectEqual(2, state.top());
+            try testing.expectEqual(2, state.top());
 
             try recoverCall(z.State.pushValue, .{ state, -2 });
-            try std.testing.expectEqual(3, state.top());
+            try testing.expectEqual(3, state.top());
 
-            try std.testing.expectEqual(
+            try testing.expectEqual(
                 @as(f64, std.math.pi),
                 state.popAnyType(f64),
             );
-            try std.testing.expectEqualStrings(
+            try testing.expectEqualStrings(
                 @as([]const u8, "foo bar baz"),
                 state.popAnyType([]const u8).?,
             );
-            try std.testing.expectEqual(
+            try testing.expectEqual(
                 @as(f64, std.math.pi),
                 state.popAnyType(f64),
             );
-            try std.testing.expectEqual(0, state.top());
+            try testing.expectEqual(0, state.top());
         }
     }.testCase);
 }
@@ -521,21 +536,21 @@ test "State.remove" {
                 state,
                 @as(f64, std.math.pi),
             });
-            try std.testing.expectEqual(1, state.top());
+            try testing.expectEqual(1, state.top());
 
             try recoverCall(z.State.pushAnyType, .{
                 state,
                 @as([]const u8, "foo bar baz"),
             });
-            try std.testing.expectEqual(2, state.top());
+            try testing.expectEqual(2, state.top());
 
             state.remove(1);
 
-            try std.testing.expectEqualStrings(
+            try testing.expectEqualStrings(
                 @as([]const u8, "foo bar baz"),
                 state.popAnyType([]const u8).?,
             );
-            try std.testing.expectEqual(0, state.top());
+            try testing.expectEqual(0, state.top());
         }
     }.testCase);
 }
@@ -553,21 +568,21 @@ test "State.insert" {
                 state,
                 @as(f64, std.math.pi),
             });
-            try std.testing.expectEqual(1, state.top());
+            try testing.expectEqual(1, state.top());
 
             try recoverCall(z.State.pushAnyType, .{
                 state,
                 @as([]const u8, "foo bar baz"),
             });
-            try std.testing.expectEqual(2, state.top());
+            try testing.expectEqual(2, state.top());
 
             state.insert(1);
 
-            try std.testing.expectEqual(
+            try testing.expectEqual(
                 @as(f64, std.math.pi),
                 state.popAnyType(f64),
             );
-            try std.testing.expectEqual(1, state.top());
+            try testing.expectEqual(1, state.top());
         }
     }.testCase);
 }
@@ -585,21 +600,21 @@ test "State.replace" {
                 state,
                 @as(f64, std.math.pi),
             });
-            try std.testing.expectEqual(1, state.top());
+            try testing.expectEqual(1, state.top());
 
             try recoverCall(z.State.pushAnyType, .{
                 state,
                 @as([]const u8, "foo bar baz"),
             });
-            try std.testing.expectEqual(2, state.top());
+            try testing.expectEqual(2, state.top());
 
             state.replace(1);
 
-            try std.testing.expectEqualStrings(
+            try testing.expectEqualStrings(
                 @as([]const u8, "foo bar baz"),
                 state.popAnyType([]const u8).?,
             );
-            try std.testing.expectEqual(0, state.top());
+            try testing.expectEqual(0, state.top());
         }
     }.testCase);
 }
@@ -613,8 +628,8 @@ test "State.checkStack" {
             });
             defer state.deinit();
 
-            try std.testing.expect(state.checkStack(1));
-            try std.testing.expect(!state.checkStack(400000000));
+            try testing.expect(state.checkStack(1));
+            try testing.expect(!state.checkStack(400000000));
         }
     }.testCase);
 }
@@ -636,12 +651,12 @@ test "State.xMove" {
             });
             state.xMove(thread2, 1);
 
-            try std.testing.expectEqualStrings(
+            try testing.expectEqualStrings(
                 @as([]const u8, "foo bar baz"),
                 thread2.popAnyType([]const u8).?,
             );
-            try std.testing.expectEqual(0, thread2.top());
-            try std.testing.expectEqual(1, state.top());
+            try testing.expectEqual(0, thread2.top());
+            try testing.expectEqual(1, state.top());
         }
     }.testCase);
 }
@@ -658,9 +673,9 @@ test "State.equal" {
             state.pushAnyType(@as(f64, 1));
             state.pushAnyType(@as(f64, 2));
 
-            try std.testing.expect(!state.equal(1, 2));
-            try std.testing.expect(state.equal(1, 1));
-            try std.testing.expect(state.equal(2, 2));
+            try testing.expect(!state.equal(1, 2));
+            try testing.expect(state.equal(1, 1));
+            try testing.expect(state.equal(2, 2));
         }
     }.testCase);
 }
@@ -677,9 +692,9 @@ test "State.rawEqual" {
             state.pushAnyType(@as(f64, 1));
             state.pushAnyType(@as(f64, 2));
 
-            try std.testing.expect(!state.rawEqual(1, 2));
-            try std.testing.expect(state.rawEqual(1, 1));
-            try std.testing.expect(state.rawEqual(2, 2));
+            try testing.expect(!state.rawEqual(1, 2));
+            try testing.expect(state.rawEqual(1, 1));
+            try testing.expect(state.rawEqual(2, 2));
         }
     }.testCase);
 }
@@ -696,10 +711,10 @@ test "State.lessThan" {
             state.pushAnyType(@as(f64, 1));
             state.pushAnyType(@as(f64, 2));
 
-            try std.testing.expect(state.lessThan(1, 2));
-            try std.testing.expect(!state.lessThan(2, 1));
-            try std.testing.expect(!state.lessThan(1, 1));
-            try std.testing.expect(!state.lessThan(2, 2));
+            try testing.expect(state.lessThan(1, 2));
+            try testing.expect(!state.lessThan(2, 1));
+            try testing.expect(!state.lessThan(1, 1));
+            try testing.expect(!state.lessThan(2, 2));
         }
     }.testCase);
 }
@@ -714,7 +729,7 @@ test "State.valueType" {
             defer state.deinit();
 
             state.pushAnyType(@as(f64, 3.14));
-            try std.testing.expectEqual(
+            try testing.expectEqual(
                 .number,
                 state.valueType(1),
             );
@@ -722,7 +737,7 @@ test "State.valueType" {
                 state,
                 @as([]const u8, "foo bar baz"),
             });
-            try std.testing.expectEqual(
+            try testing.expectEqual(
                 .string,
                 state.valueType(2),
             );
@@ -739,19 +754,19 @@ test "State.typeName" {
             });
             defer state.deinit();
 
-            try std.testing.expectEqualStrings(
+            try testing.expectEqualStrings(
                 "boolean",
                 std.mem.span(state.typeName(.boolean)),
             );
-            try std.testing.expectEqualStrings(
+            try testing.expectEqualStrings(
                 "number",
                 std.mem.span(state.typeName(.number)),
             );
-            try std.testing.expectEqualStrings(
+            try testing.expectEqualStrings(
                 "function",
                 std.mem.span(state.typeName(.function)),
             );
-            try std.testing.expectEqualStrings(
+            try testing.expectEqualStrings(
                 "string",
                 std.mem.span(state.typeName(.string)),
             );
@@ -771,7 +786,7 @@ test "State.getGlobal" {
             try recoverCall(z.State.openBase, .{state});
             try recoverCall(z.State.getGlobal, .{ state, "_G" });
             try recoverCall(z.State.getGlobal, .{ state, "_G" });
-            try std.testing.expect(state.equal(-1, -2));
+            try testing.expect(state.equal(-1, -2));
         }
     }.testCase);
 }
@@ -826,17 +841,17 @@ test "State.isXXX" {
 
             try recoverCall(z.State.openBase, .{state});
 
-            try std.testing.expect(!state.isBoolean(z.Global));
-            try std.testing.expect(!state.isCFunction(z.Global));
-            try std.testing.expect(!state.isFunction(z.Global));
-            try std.testing.expect(!state.isNil(z.Global));
-            try std.testing.expect(!state.isNone(z.Global));
-            try std.testing.expect(!state.isNoneOrNil(z.Global));
-            try std.testing.expect(!state.isNumber(z.Global));
-            try std.testing.expect(state.isTable(z.Global));
-            try std.testing.expect(!state.isThread(z.Global));
-            try std.testing.expect(!state.isUserData(z.Global));
-            try std.testing.expect(!state.isLightUserData(z.Global));
+            try testing.expect(!state.isBoolean(z.Global));
+            try testing.expect(!state.isCFunction(z.Global));
+            try testing.expect(!state.isFunction(z.Global));
+            try testing.expect(!state.isNil(z.Global));
+            try testing.expect(!state.isNone(z.Global));
+            try testing.expect(!state.isNoneOrNil(z.Global));
+            try testing.expect(!state.isNumber(z.Global));
+            try testing.expect(state.isTable(z.Global));
+            try testing.expect(!state.isThread(z.Global));
+            try testing.expect(!state.isUserData(z.Global));
+            try testing.expect(!state.isLightUserData(z.Global));
         }
     }.testCase);
 }
@@ -852,13 +867,13 @@ test "State.toXXX" {
 
             try recoverCall(z.State.openBase, .{state});
 
-            try std.testing.expect(state.toBoolean(z.Global));
-            try std.testing.expect(state.toCFunction(z.Global) == null);
-            try std.testing.expect(state.toNumber(z.Global) == 0);
-            try std.testing.expect(state.toThread(z.Global) == null);
-            try std.testing.expect(state.toUserData(z.Global) == null);
-            try std.testing.expect(state.toPointer(z.Global) != null);
-            try std.testing.expect(state.toString(z.Global) == null);
+            try testing.expect(state.toBoolean(z.Global));
+            try testing.expect(state.toCFunction(z.Global) == null);
+            try testing.expect(state.toNumber(z.Global) == 0);
+            try testing.expect(state.toThread(z.Global) == null);
+            try testing.expect(state.toUserData(z.Global) == null);
+            try testing.expect(state.toPointer(z.Global) != null);
+            try testing.expect(state.toString(z.Global) == null);
         }
     }.testCase);
 }
@@ -876,7 +891,7 @@ test "State.objLen" {
                 state,
                 @as([]const u8, "foo bar baz"),
             });
-            try std.testing.expectEqual(
+            try testing.expectEqual(
                 11,
                 state.objLen(-1),
             );
@@ -893,73 +908,73 @@ test "State.openXXX" {
             });
             defer state.deinit();
 
-            try std.testing.expect(
+            try testing.expect(
                 try recoverGetGlobalValue(state, "_G") == null,
             );
-            try std.testing.expect(
+            try testing.expect(
                 try recoverGetGlobalValue(state, "coroutine") == null,
             );
             try recoverCall(z.State.openBase, .{state});
-            try std.testing.expect(
+            try testing.expect(
                 try recoverGetGlobalValue(state, "_G") != null,
             );
-            try std.testing.expect(
+            try testing.expect(
                 try recoverGetGlobalValue(state, "coroutine") != null,
             );
 
-            try std.testing.expect(
+            try testing.expect(
                 try recoverGetGlobalValue(state, "package") == null,
             );
             try recoverCall(z.State.openPackage, .{state});
-            try std.testing.expect(
+            try testing.expect(
                 try recoverGetGlobalValue(state, "package") != null,
             );
 
-            try std.testing.expect(
+            try testing.expect(
                 try recoverGetGlobalValue(state, "table") == null,
             );
             try recoverCall(z.State.openTable, .{state});
-            try std.testing.expect(
+            try testing.expect(
                 try recoverGetGlobalValue(state, "table") != null,
             );
 
-            try std.testing.expect(
+            try testing.expect(
                 try recoverGetGlobalValue(state, "string") == null,
             );
             try recoverCall(z.State.openString, .{state});
-            try std.testing.expect(
+            try testing.expect(
                 try recoverGetGlobalValue(state, "string") != null,
             );
 
-            try std.testing.expect(
+            try testing.expect(
                 try recoverGetGlobalValue(state, "io") == null,
             );
             try recoverCall(z.State.openIO, .{state});
-            try std.testing.expect(
+            try testing.expect(
                 try recoverGetGlobalValue(state, "io") != null,
             );
 
-            try std.testing.expect(
+            try testing.expect(
                 try recoverGetGlobalValue(state, "os") == null,
             );
             try recoverCall(z.State.openOS, .{state});
-            try std.testing.expect(
+            try testing.expect(
                 try recoverGetGlobalValue(state, "os") != null,
             );
 
-            try std.testing.expect(
+            try testing.expect(
                 try recoverGetGlobalValue(state, "math") == null,
             );
             try recoverCall(z.State.openMath, .{state});
-            try std.testing.expect(
+            try testing.expect(
                 try recoverGetGlobalValue(state, "math") != null,
             );
 
-            try std.testing.expect(
+            try testing.expect(
                 try recoverGetGlobalValue(state, "debug") == null,
             );
             try recoverCall(z.State.openDebug, .{state});
-            try std.testing.expect(
+            try testing.expect(
                 try recoverGetGlobalValue(state, "debug") != null,
             );
         }
@@ -986,7 +1001,7 @@ test "State.loadFile" {
             state.pushInteger(2);
 
             try recoverCall(z.State.call, .{ state, 2, 1 });
-            try std.testing.expectEqual(3, state.toInteger(-1));
+            try testing.expectEqual(3, state.toInteger(-1));
         }
     }.testCase);
 }
@@ -1006,7 +1021,7 @@ test "State.doFile" {
             state.pushInteger(1);
             state.pushInteger(2);
             try recoverCall(z.State.call, .{ state, 2, 1 });
-            try std.testing.expectEqual(3, state.toInteger(-1));
+            try testing.expectEqual(3, state.toInteger(-1));
         }
     }.testCase);
 }
@@ -1022,7 +1037,7 @@ test "State.loadString" {
 
             try state.loadString("return 1 + 2", null);
             state.call(0, 1);
-            try std.testing.expectEqual(3, state.toInteger(-1));
+            try testing.expectEqual(3, state.toInteger(-1));
         }
     }.testCase);
 }
@@ -1037,7 +1052,36 @@ test "State.doString" {
             defer state.deinit();
 
             try state.doString("return 1 + 2", null);
-            try std.testing.expectEqual(3, state.toInteger(-1));
+            try testing.expectEqual(3, state.toInteger(-1));
+        }
+    }.testCase);
+}
+
+test "State.isYieldable" {
+    try withProgressiveAllocator(struct {
+        fn testCase(alloc: *std.mem.Allocator) anyerror!void {
+            var state = try z.State.init(.{
+                .allocator = alloc,
+                .panicHandler = recoverableLuaPanic,
+            });
+            defer state.deinit();
+
+            try testing.expect(!state.isYieldable());
+
+            const thread = try recoverCall(z.State.newThread, .{state});
+
+            try recoverCall(z.State.pushZigFunction, .{
+                thread, struct {
+                    fn zigFunc(th: z.State) bool {
+                        return th.isYieldable();
+                    }
+                }.zigFunc,
+            });
+
+            _ = try thread.@"resume"(0);
+
+            const yieldable = state.popAnyType(bool);
+            try testing.expect(yieldable.?);
         }
     }.testCase);
 }
