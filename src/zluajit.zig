@@ -487,6 +487,7 @@ pub const State = struct {
                         }
                         return null;
                     },
+                    .int => return @intCast(self.toInteger(idx)),
                     else => @compileError("can't get value of type " ++ @typeName(T) ++ " from Lua stack"),
                 }
             },
@@ -668,6 +669,7 @@ pub const State = struct {
                         }
                     },
                     .@"enum" => return self.pushString(@tagName(v)),
+                    .int => return self.pushInteger(@intCast(v)),
                     else => {},
                 }
             },
@@ -859,6 +861,7 @@ pub const State = struct {
                         }
                         return self.checkAnyType(narg, info.child);
                     },
+                    .int => return @intCast(self.checkInteger(narg)),
                     else => {},
                 }
             },
