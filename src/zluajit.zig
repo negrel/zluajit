@@ -1072,7 +1072,7 @@ pub const State = struct {
     /// may trigger a metamethod for the "newindex" event.
     ///
     /// This is the same as lua_setfield.
-    pub fn setField(self: Self, idx: c_int, k: []const u8) void {
+    pub fn setField(self: Self, idx: c_int, k: [*c]const u8) void {
         c.lua_setfield(self.lua, idx, k);
     }
 
@@ -1239,7 +1239,7 @@ pub const State = struct {
         self: Self,
         reader: Reader,
         dt: ?*anyopaque,
-        chunkname: []const u8,
+        chunkname: [*c]const u8,
     ) LoadError!void {
         return loadErrorFromInt(c.lua_load(self.lua, reader, dt, chunkname));
     }
