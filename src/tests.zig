@@ -377,11 +377,32 @@ test "State.error" {
         }
     }.zfunc;
 
-    // Missing argument.
     state.pushCFunction(z.wrapFn(zfunc));
     state.pCall(0, 0, 0) catch {
         try testing.expectEqualStrings(
             "a runtime error",
+            state.popAnyType([]const u8).?,
+        );
+        return;
+    };
+
+    unreachable;
+}
+
+test "State.raiseError" {
+    var state = try z.State.init(.{});
+    defer state.deinit();
+
+    const zfunc = struct {
+        pub fn zfunc(th: z.State) f64 {
+            th.raiseError(error.OutOfMemory);
+        }
+    }.zfunc;
+
+    state.pushCFunction(z.wrapFn(zfunc));
+    state.pCall(0, 0, 0) catch {
+        try testing.expectEqualStrings(
+            "OutOfMemory",
             state.popAnyType([]const u8).?,
         );
         return;
