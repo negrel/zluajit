@@ -1,8 +1,8 @@
 .{
-    .name = .zlua,
-    .version = "0.1.0",
+    .name = .zluajit,
+    .version = "0.0.0",
     .minimum_zig_version = "0.14.1",
-    .fingerprint = 0xcf671dd7be0e0d6,
+    .fingerprint = 0xbefd4bde7e3794b8,
 
     // This field is optional.
     // This is currently advisory only; Zig does not yet do anything
