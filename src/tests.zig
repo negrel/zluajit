@@ -1255,3 +1255,26 @@ test "checkEnum" {
         }
     }.testCase);
 }
+
+test "TableRef.asMetaTableOf/TableRef.getMetaTable" {
+    try withProgressiveAllocator(struct {
+        fn testCase(alloc: *std.mem.Allocator) anyerror!void {
+            var state = try z.State.init(.{
+                .allocator = alloc,
+                .panicHandler = recoverableLuaPanic,
+            });
+            defer state.deinit();
+
+            try recoverCall(z.State.newTable, .{state});
+            try recoverCall(z.State.newTable, .{state});
+
+            const tab = state.toAnyType(z.TableRef, -1).?;
+            const mt = state.toAnyType(z.TableRef, -2).?;
+            mt.asMetaTableOf(tab.ref.idx);
+
+            try testing.expect(
+                tab.getMetaTable().?.ref.toPointer() == mt.ref.toPointer(),
+            );
+        }
+    }.testCase);
+}
