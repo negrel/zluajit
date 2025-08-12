@@ -619,6 +619,32 @@ test "State.replace" {
     }.testCase);
 }
 
+test "State.copy" {
+    try withProgressiveAllocator(struct {
+        fn testCase(alloc: *std.mem.Allocator) anyerror!void {
+            var state = try z.State.init(.{
+                .allocator = alloc,
+                .panicHandler = recoverableLuaPanic,
+            });
+            defer state.deinit();
+
+            try recoverCall(z.State.pushString, .{ state, "foo bar baz" });
+            try recoverCall(z.State.pushNumber, .{ state, 123 });
+
+            state.copy(-1, -2);
+
+            try testing.expectEqual(
+                123,
+                state.popAnyType(z.Number),
+            );
+            try testing.expectEqual(
+                123,
+                state.popAnyType(z.Number),
+            );
+        }
+    }.testCase);
+}
+
 test "State.checkStack" {
     try withProgressiveAllocator(struct {
         fn testCase(alloc: *std.mem.Allocator) anyerror!void {

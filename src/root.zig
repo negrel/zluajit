@@ -124,6 +124,15 @@ pub const State = struct {
         c.lua_replace(self.lua, idx);
     }
 
+    /// Copies the element at index fromIdx into the valid index toIdx,
+    /// replacing the value at that position. Values at other positions are not
+    /// affected.
+    ///
+    /// This is the same as lua_copy.
+    pub fn copy(self: Self, fromIdx: c_int, toIdx: c_int) void {
+        c.lua_copy(self.lua, fromIdx, toIdx);
+    }
+
     /// Ensures that there are at least extra free stack slots in the stack. It
     /// returns false if it cannot fulfill the request, because it would cause
     /// the stack to be larger than a fixed maximum size (typically at least a
