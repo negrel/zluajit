@@ -780,9 +780,9 @@ pub const State = struct {
     ) T {
         const info = @typeInfo(T).@"enum";
 
-        var enumValues: [info.fields.len:0]usize = undefined;
+        var enum_values: [info.fields.len:0]usize = undefined;
         var lst: [info.fields.len:0][*c]const u8 = undefined;
-        inline for (&lst, &enumValues, info.fields) |*l, *v, f| {
+        inline for (&lst, &enum_values, info.fields) |*l, *v, f| {
             l.* = f.name;
             v.* = f.value;
         }
@@ -793,7 +793,7 @@ pub const State = struct {
             lst[0..],
         );
 
-        return @enumFromInt(enumValues[@as(usize, @intCast(idx))]);
+        return @enumFromInt(enum_values[@as(usize, @intCast(idx))]);
     }
 
     /// Checks whether the function argument narg is a userdata of the type
@@ -1852,15 +1852,15 @@ pub fn wrapFn(func: anytype) CFunction {
 
             var args: std.meta.ArgsTuple(Func) = undefined;
 
-            comptime var threadForwarded = false;
+            comptime var thread_forwarded = false;
             comptime var i = 1;
             inline for (
                 &args,
                 info.params,
             ) |*arg, p| {
-                if (!threadForwarded and p.type == State and i == 1) {
+                if (!thread_forwarded and p.type == State and i == 1) {
                     arg.* = th;
-                    threadForwarded = true;
+                    thread_forwarded = true;
                     continue;
                 } else arg.* = th.checkAnyType(i, p.type.?);
                 i += 1;

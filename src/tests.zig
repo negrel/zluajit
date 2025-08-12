@@ -7,7 +7,7 @@ const z = @import("zluajit");
 const testing = std.testing;
 const recoverCall = recover.call;
 
-var panicMsg: []const u8 = "";
+var panic_msg: []const u8 = "";
 
 /// Execute provided test case with a memory limited allocator, increasing it's
 /// limit each time test case returns an [OutOfMemory] error or panics.
@@ -22,10 +22,10 @@ fn withProgressiveAllocator(tcase: fn (*std.mem.Allocator) anyerror!void) !void 
         tcase(&alloc) catch |err| {
             if (err == std.mem.Allocator.Error.OutOfMemory or err == error.Panic) {
                 if (err == error.Panic) {
-                    if (!std.mem.eql(u8, "not enough memory", panicMsg))
-                        @panic(panicMsg);
-                    std.heap.c_allocator.free(panicMsg);
-                    panicMsg = "";
+                    if (!std.mem.eql(u8, "not enough memory", panic_msg))
+                        @panic(panic_msg);
+                    std.heap.c_allocator.free(panic_msg);
+                    panic_msg = "";
                 }
 
                 palloc.progress();
@@ -46,8 +46,8 @@ fn recoverableLuaPanic(lua: ?*z.c.lua_State) callconv(.c) c_int {
     const th = z.State.initFromCPointer(lua.?);
 
     if (th.popAnyType([]const u8)) |msg| {
-        panicMsg = std.heap.c_allocator.dupe(u8, msg) catch @panic("OOM");
-        recover.panic.call(panicMsg, @returnAddress());
+        panic_msg = std.heap.c_allocator.dupe(u8, msg) catch @panic("OOM");
+        recover.panic.call(panic_msg, @returnAddress());
     } else {
         recover.panic.call("lua panic", @returnAddress());
     }
