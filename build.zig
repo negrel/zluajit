@@ -20,7 +20,7 @@ pub fn build(b: *std.Build) void {
         lua52_compat,
     );
 
-    const module = b.addModule("zlua", .{
+    const module = b.addModule("zluajit", .{
         .root_source_file = b.path("src/root.zig"),
         .target = target,
         .optimize = optimize,
@@ -38,8 +38,13 @@ pub fn build(b: *std.Build) void {
     b.installArtifact(luajitLib);
 
     const lib_unit_tests = b.addTest(.{
-        .root_module = module,
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("src/tests.zig"),
+            .target = target,
+            .optimize = optimize,
+        }),
     });
+    lib_unit_tests.root_module.addImport("zluajit", module);
     const install_lib_unit_tests = b.addInstallArtifact(lib_unit_tests, .{});
     const run_lib_unit_tests = b.addRunArtifact(lib_unit_tests);
 
