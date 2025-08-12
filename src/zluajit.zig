@@ -509,6 +509,15 @@ pub const State = struct {
         return v;
     }
 
+    /// Find or create a module table with a given name. The function first
+    /// looks at the LOADED table and, if that fails, try a global variable with
+    /// that name. In any case, leaves on the stack the module table.
+    ///
+    /// This is the same as luaL_pushmodule.
+    pub fn pushModule(self: Self, name: [*c]const u8, sizeHint: c_int) void {
+        c.luaL_pushmodule(self.lua, name, sizeHint);
+    }
+
     /// Pushes a boolean value with value b onto the stack.
     ///
     /// This is the same as lua_pushbool.
