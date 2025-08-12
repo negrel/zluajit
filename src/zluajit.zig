@@ -413,8 +413,8 @@ pub const State = struct {
     /// If the value at the given acceptable index is a full userdata, returns
     /// its block address. If the value is a light userdata, returns its
     /// pointer. Otherwise, returns null.
-    pub fn toUserData(self: Self, idx: c_int) ?*anyopaque {
-        return c.lua_touserdata(self.lua, idx);
+    pub fn toUserData(self: Self, idx: c_int, comptime T: type) ?*T {
+        return @ptrCast(@alignCast(c.lua_touserdata(self.lua, idx)));
     }
 
     /// Returns the "length" of the value at the given acceptable index: for
@@ -439,7 +439,6 @@ pub const State = struct {
         return switch (T) {
             bool => self.toBoolean(idx),
             FunctionRef => FunctionRef.init(ValueRef.init(self, idx)),
-            *anyopaque => self.toUserData(idx),
             f32, f64 => @floatCast(self.toNumber(idx)),
             Integer => self.toInteger(idx),
             []const u8 => self.toString(idx),
@@ -477,10 +476,7 @@ pub const State = struct {
             },
             else => {
                 switch (@typeInfo(T)) {
-                    .pointer => {
-                        const ptr = self.toAnyType(*anyopaque, idx) orelse return null;
-                        return @ptrCast(@alignCast(ptr));
-                    },
+                    .pointer => |info| return self.toUserData(idx, info.child),
                     .@"enum" => |info| {
                         if (self.valueType(idx) != .string) return null;
                         const str = self.toString(idx);
@@ -852,7 +848,7 @@ pub const State = struct {
                 switch (@typeInfo(T)) {
                     .pointer => |info| {
                         return switch (info.size) {
-                            .one => return self.checkAnyType(narg, info.child),
+                            .one => return self.checkAnyType(narg, *anyopaque),
                             else => @compileError("pointer type of size " ++ @tagName(info.size) ++ " is not supported (" ++ @typeName(T) ++ ")"),
                         };
                     },
