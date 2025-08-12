@@ -1224,3 +1224,34 @@ test "newUserData" {
         }
     }.testCase);
 }
+
+test "checkEnum" {
+    try withProgressiveAllocator(struct {
+        fn testCase(alloc: *std.mem.Allocator) anyerror!void {
+            var state = try z.State.init(.{
+                .allocator = alloc,
+                .panicHandler = recoverableLuaPanic,
+            });
+            defer state.deinit();
+
+            const Enum = enum { foo, bar };
+            const checkEnum = struct {
+                fn checkEnum(th: z.State) Enum {
+                    return th.checkEnum(-1, Enum, .foo);
+                }
+            }.checkEnum;
+
+            try recoverCall(z.State.pushString, .{ state, "bar" });
+            try testing.expectEqual(
+                .bar,
+                try recoverCall(checkEnum, .{state}),
+            );
+
+            state.pop(1);
+            try testing.expectEqual(
+                .foo,
+                try recoverCall(checkEnum, .{state}),
+            );
+        }
+    }.testCase);
+}
