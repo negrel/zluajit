@@ -8,7 +8,7 @@ const builtin = @import("builtin");
 
 pub const c = @import("./c.zig");
 
-/// State defines an ergonomic Zig wrapper around [c.lua_State].
+/// State defines an ergonomic Zig wrapper around C Lua state.
 pub const State = struct {
     const Self = @This();
 
@@ -19,7 +19,7 @@ pub const State = struct {
     };
 
     pub const Options = struct {
-        /// Allocator used by Lua runtime. Pointer must outlive [State].
+        /// Allocator used by Lua runtime. Pointer must outlive state.
         allocator: *const std.mem.Allocator = &std.heap.c_allocator,
         /// Panic handler used by Lua runtime.
         panicHandler: ?CFunction = luaPanic,
@@ -51,18 +51,18 @@ pub const State = struct {
         return .{ .lua = lua };
     }
 
-    /// Creates a new State wrapping provided [c.lua_State] pointer.
+    /// Creates a new State wrapping provided C Lua state pointer.
     pub fn initFromCPointer(lua: *c.lua_State) Self {
         return .{ .lua = lua };
     }
 
-    /// Destroys lua state. You must not use [State] nor data owned by it after
+    /// Destroys lua state. You must not use state nor data owned by it after
     /// calling this method.
     pub fn deinit(self: Self) void {
         c.lua_close(self.lua);
     }
 
-    /// Creates a new thread, pushes it on the stack, and returns a [State]
+    /// Creates a new thread, pushes it on the stack, and returns a state
     /// that represents this new thread. The new thread returned by this
     /// function shares with the original thread its global environment, but has
     /// an independent execution stack.
@@ -70,7 +70,7 @@ pub const State = struct {
     /// There is no explicit function to close or to destroy a thread. Threads
     /// are subject to garbage collection, like any Lua object.
     ///
-    /// This function doesn't return an [error.OutOfMemory] as lua_newthread
+    /// This function doesn't return an `error.OutOfMemory` as lua_newthread
     /// calls panic handler instead of returning null.
     ///
     /// This is the same as lua_newthread.
@@ -210,7 +210,7 @@ pub const State = struct {
         return c.lua_isboolean(self.lua, idx);
     }
 
-    /// Returns true if the value at the given acceptable index is a [CFunction],
+    /// Returns true if the value at the given acceptable index is a CFunction,
     /// and false otherwise.
     ///
     /// This is the same as lua_iscfunction.
@@ -363,7 +363,7 @@ pub const State = struct {
     /// The Lua value must be a string or a number; otherwise, the function
     /// returns null. If the value is a number, then toString also changes the
     /// actual value in the stack to a string. (This change confuses
-    /// [Thread.next] when toString is applied to keys during a table
+    /// Thread.next when toString is applied to keys during a table
     /// traversal.)
     ///
     /// toString returns a fully aligned pointer to a string inside the Lua
@@ -380,8 +380,8 @@ pub const State = struct {
         return str[0..len];
     }
 
-    /// Converts a value at the given acceptable index to a [CFunction]. That
-    /// value must be a [CFunction]; otherwise, returns null.
+    /// Converts a value at the given acceptable index to a CFunction. That
+    /// value must be a CFunction; otherwise, returns null.
     ///
     /// This is the same as lua_tocfunction.
     pub fn toCFunction(self: Self, idx: c_int) ?CFunction {
@@ -401,7 +401,7 @@ pub const State = struct {
         return c.lua_topointer(self.lua, idx);
     }
 
-    /// Converts the value at the given acceptable index to a Lua [State].
+    /// Converts the value at the given acceptable index to a Lua state.
     /// This value must be a thread; otherwise, the function returns null.
     ///
     /// This is the same as lua_tothread.
@@ -427,7 +427,7 @@ pub const State = struct {
         return c.lua_objlen(self.lua, idx);
     }
 
-    /// This is the same as [State.objLen].
+    /// This is the same as State.objLen.
     pub fn strLen(self: Self, idx: c_int) usize {
         return c.lua_strlen(self.lua, idx);
     }
@@ -556,14 +556,14 @@ pub const State = struct {
 
     /// Pushes a new C closure onto the stack.
     ///
-    /// When a [CFunction] is created, it is possible to associate some values
+    /// When a CFunction is created, it is possible to associate some values
     /// with it, thus creating a C closure; these values are then accessible to
     /// the function whenever it is called. To associate values with a
-    /// [CFunction], first these values should be pushed onto the stack
+    /// CFunction, first these values should be pushed onto the stack
     /// (when there are multiple values, the first value is pushed first). Then
-    /// [State.pushCClosure] is called to create and push the [CFunction] onto
+    /// State.pushCClosure is called to create and push the CFunction onto
     /// the stack, with the argument `n` telling how many values should be
-    /// associated with the function. [State.pushCClosure] also pops these values
+    /// associated with the function. State.pushCClosure also pops these values
     /// from the stack.
     ///
     /// This is the same as lua_pushcclosure.
@@ -571,11 +571,11 @@ pub const State = struct {
         c.lua_pushcclosure(self.lua, cfn, n);
     }
 
-    /// Pushes a [CFunction] onto the stack.
+    /// Pushes a CFunction onto the stack.
     ///
-    /// This function receives a pointer to a [CFunction] and pushes onto the
+    /// This function receives a pointer to a CFunction and pushes onto the
     /// stack a Lua value of type function that, when called, invokes the
-    /// corresponding [CFunction].
+    /// corresponding CFunction.
     ///
     /// Any function to be registered in Lua must follow the correct protocol to
     /// receive its parameters and return its results (see lua_CFunction).
@@ -868,7 +868,7 @@ pub const State = struct {
     /// If the function argument arg is a string, returns this string. If this
     /// argument is absent or is nil, returns `def`. Otherwise, raises an error.
     ///
-    /// This function uses [Thread.toString] to get its result, so all
+    /// This function uses Thread.toString to get its result, so all
     /// conversions and caveats of that function apply here.
     ///
     /// This is the same as luaL_optlstring.
@@ -907,7 +907,7 @@ pub const State = struct {
         c.luaL_argerror(self.lua, narg, extramsg);
     }
 
-    /// Dump [State] Lua stack using [std.debug.print].
+    /// Dump state Lua stack using std.debug.print.
     pub fn dumpStack(self: Self) void {
         std.debug.print("lua stack size {}\n", .{self.top()});
         for (1..@as(usize, @intCast(self.top())) + 1) |i| {
@@ -941,7 +941,7 @@ pub const State = struct {
         c.luaL_where(self.lua, lvl);
     }
 
-    /// Returns true if is is the main [State] and false otherwise.
+    /// Returns true if is is the main state and false otherwise.
     pub fn isMain(self: Self) bool {
         const main = c.lua_pushthread(self.lua) == 1;
         c.lua_pop(self.lua, 1);
@@ -996,7 +996,7 @@ pub const State = struct {
     }
 
     /// Creates a new empty table and pushes it onto the stack. It is equivalent
-    /// to [State.createTable](0, 0).
+    /// to State.createTable(0, 0).
     ///
     /// This is the same as lua_newtable.
     pub fn newTable(self: Self) void {
@@ -1203,15 +1203,15 @@ pub const State = struct {
         return c.luaL_callmeta(self.lua, obj, e) != 0;
     }
 
-    /// Loads a Lua chunk. If there are no errors, [State.load] pushes the
+    /// Loads a Lua chunk. If there are no errors, State.load pushes the
     /// compiled chunk as a Lua function on top of the stack. Otherwise, it
     /// pushes an error message.
     ///
     /// This function only loads a chunk; it does not run it.
-    /// [State.load] automatically detects whether the chunk is text or binary,
+    /// State.load automatically detects whether the chunk is text or binary,
     /// and loads it accordingly.
     ///
-    /// The [State.load] function uses a user-supplied reader function to read
+    /// The State.load function uses a user-supplied reader function to read
     /// the chunk (see Reader). The data argument is an opaque value passed to
     /// the reader function.
     ///
@@ -1305,17 +1305,17 @@ pub const State = struct {
     /// Yields a coroutine.
     ///
     /// This function should only be called as the return expression of a
-    /// [CFunction], as follows:
+    /// CFunction, as follows:
     /// ```zig
     ///     return thread.yield(nresults);
     /// ```
     ///
-    /// When a [CFunction] calls [State.yield] in that way, the running
-    /// coroutine suspends its execution, and the call to [State.@"resume"]
+    /// When a CFunction calls State.yield in that way, the running
+    /// coroutine suspends its execution, and the call to State.@"resume"
     /// that started this coroutine returns.
     ///
     /// The parameter nresults is the number of values from the stack that are
-    /// passed as results to [State.@"resume"].
+    /// passed as results to State.@"resume".
     ///
     /// This is the same as lua_yield.
     pub fn yield(self: Self, nresults: c_int) c_int {
@@ -1325,18 +1325,18 @@ pub const State = struct {
     /// Starts and resumes a coroutine in a given thread.
     ///
     /// To start a coroutine, you first create a new thread (see
-    /// [State.newThread]); then you push onto its stack the main function plus
-    /// any arguments; then you call [State.@"resume"], with narg being the
+    /// State.newThread); then you push onto its stack the main function plus
+    /// any arguments; then you call State.@"resume", with narg being the
     /// number of arguments. This call returns when the coroutine suspends or
     /// finishes its execution. When it returns, the stack contains all values
-    /// passed to [State.yield], or all values returned by the body function.
-    /// [State.@"resume"] returns [State.Status.yield] if the coroutine yields,
-    /// [State.Status.ok] if the coroutine finishes its execution without errors,
-    /// or an error code in case of errors (see [State.pCall]). In case of
+    /// passed to State.yield, or all values returned by the body function.
+    /// State.@"resume" returns State.Status.yield if the coroutine yields,
+    /// State.Status.ok if the coroutine finishes its execution without errors,
+    /// or an error code in case of errors (see State.pCall). In case of
     /// errors, the stack is not unwound, so you can use the debug API over it.
     /// The error message is on the top of the stack. To restart a coroutine,
     /// you put on its stack only the values to be passed as results from yield,
-    /// and then call [State.@"resume"].
+    /// and then call State.@"resume".
     ///
     /// This is the same as lua_resume.
     pub fn @"resume"(self: Self, narg: c_int) (CallError)!Status {
@@ -1417,10 +1417,10 @@ pub const State = struct {
     ///     }
     /// ```
     ///
-    /// While traversing a table, do not call [State.toString] directly on a
+    /// While traversing a table, do not call State.toString directly on a
     /// key, unless you know that the key is actually a string. Recall that
-    /// [State.toString] changes the value at the given index; this confuses
-    /// the next call to [State.next].
+    /// State.toString changes the value at the given index; this confuses
+    /// the next call to State.next.
     ///
     /// This is the same as lua_next.
     pub fn next(self: Self, idx: c_int) bool {
@@ -1439,7 +1439,7 @@ pub const State = struct {
     }
 
     /// Returns the memory-allocation function of a given state. If ud is not
-    /// null, Lua stores in *ud the opaque pointer passed to [State.init].
+    /// null, Lua stores in *ud the opaque pointer passed to State.init.
     ///
     /// This is the same as lua_getallocf.
     pub fn allocator(self: Self) ?*std.mem.Allocator {
@@ -1448,7 +1448,7 @@ pub const State = struct {
         return ud;
     }
 
-    /// Changes the allocator of a given [State] to f with user data ud.
+    /// Changes the allocator of a given state to f with user data ud.
     ///
     /// This is the same as lua_setallocf.
     pub fn setAllocator(self: Self, alloc: ?*std.mem.Allocator) void {
@@ -1459,7 +1459,7 @@ pub const State = struct {
         }
     }
 
-    /// Sets the [CFunction] f as the new value of global name.
+    /// Sets the CFunction f as the new value of global name.
     ///
     /// This is the same as c.lua_register.
     pub fn register(self: Self, name: [*c]const u8, cfunc: CFunction) void {
@@ -1534,7 +1534,7 @@ pub const State = struct {
     }
 };
 
-/// [State.gc] operations.
+/// State.gc() operations.
 pub const GcOp = enum(c_int) {
     stop = c.LUA_GCSTOP,
     restart = c.LUA_GCRESTART,
@@ -1633,7 +1633,7 @@ pub const Value = union(ValueType) {
     userdata: *anyopaque,
 };
 
-/// ValueRef is a reference to a Lua value on the stack of a [State]. [State]
+/// ValueRef is a reference to a Lua value on the stack of a state. state
 /// must outlive ValueRef and stack position must remain stable.
 pub const ValueRef = struct {
     const Self = @This();
@@ -1657,14 +1657,14 @@ pub const ValueRef = struct {
         return self.thread.valueType(self.idx);
     }
 
-    /// Returns a [TableRef], a specialized reference for table values. If
+    /// Returns a TableRef, a specialized reference for table values. If
     /// referenced value isn't a table, this function panics.
     pub fn toTable(self: Self) TableRef {
         std.debug.assert(self.valueType() == .table);
         return TableRef.init(self);
     }
 
-    /// Returns a [FunctionRef], a specialized reference for function values. If
+    /// Returns a FunctionRef, a specialized reference for function values. If
     /// referenced value isn't a function, this function panics.
     pub fn toFunction(self: Self) FunctionRef {
         std.debug.assert(self.valueType() == .function);
@@ -1686,8 +1686,8 @@ pub const Integer = c.lua_Integer;
 /// type for numbers (e.g., float or long).
 pub const Number = c.lua_Number;
 
-/// TableRef is a reference to a table value on the stack of a [State].
-/// [State] must outlive TableRef and stack position must remain stable.
+/// TableRef is a reference to a table value on the stack of a state.
+/// state must outlive TableRef and stack position must remain stable.
 pub const TableRef = struct {
     const Self = @This();
 
@@ -1698,8 +1698,8 @@ pub const TableRef = struct {
     }
 };
 
-/// FunctionRef is a reference to a function on the stack of a [State].
-/// [State] must outlive TableRef and stack position must remain stable.
+/// FunctionRef is a reference to a function on the stack of a state.
+/// state must outlive TableRef and stack position must remain stable.
 pub const FunctionRef = struct {
     const Self = @This();
 
@@ -1783,13 +1783,13 @@ pub fn luaPanic(lua: ?*c.lua_State) callconv(.c) c_int {
     @panic("lua panic");
 }
 
-/// Wraps a Zig function into a [CFunction] at comptime that takes care of
+/// Wraps a Zig function into a CFunction at comptime that takes care of
 /// extracting argument from stack and pushing result onto the stack.
 /// Zig errors are converted to string.
 ///
-/// If function first argument is of type [State], this state will be passed
+/// If function first argument is of type state, this state will be passed
 /// as argument. If you want to receive a coroutine as first argument, your
-/// function must take 2 [State] argument:
+/// function must take 2 state argument:
 ///     fn myZigFunction(callingState: State, argState: State) void {
 ///         //...
 ///     }
