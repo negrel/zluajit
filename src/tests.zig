@@ -171,7 +171,7 @@ test "State.init" {
     }.testCase);
 }
 
-test "Thread.newThread" {
+test "State.newThread" {
     try withProgressiveAllocator(struct {
         fn testCase(alloc: *std.mem.Allocator) anyerror!void {
             var state = try z.State.init(.{
@@ -188,7 +188,7 @@ test "Thread.newThread" {
     }.testCase);
 }
 
-test "Thread.pushAnyType/Thread.popAnyType/Thread.valueType" {
+test "State.pushAnyType/Thread.popAnyType/Thread.valueType" {
     try withProgressiveAllocator(struct {
         fn testCase(alloc: *std.mem.Allocator) anyerror!void {
             var state = try z.State.init(.{
@@ -335,7 +335,7 @@ test "Thread.pushAnyType/Thread.popAnyType/Thread.valueType" {
     }.testCase);
 }
 
-test "Thread.pushZigFunction" {
+test "State.pushZigFunction" {
     var state = try z.State.init(.{});
     defer state.deinit();
 
@@ -365,7 +365,7 @@ test "Thread.pushZigFunction" {
     unreachable;
 }
 
-test "Thread.error" {
+test "State.error" {
     var state = try z.State.init(.{});
     defer state.deinit();
 
@@ -390,7 +390,7 @@ test "Thread.error" {
     unreachable;
 }
 
-test "Thread.concat" {
+test "State.concat" {
     try withProgressiveAllocator(struct {
         fn testCase(alloc: *std.mem.Allocator) anyerror!void {
             var state = try z.State.init(.{
@@ -410,7 +410,7 @@ test "Thread.concat" {
     }.testCase);
 }
 
-test "Thread.next" {
+test "State.next" {
     try withProgressiveAllocator(struct {
         fn testCase(alloc: *std.mem.Allocator) anyerror!void {
             var state = try z.State.init(.{
@@ -451,7 +451,7 @@ test "Thread.next" {
     }.testCase);
 }
 
-test "Thread.top/Thread.setTop" {
+test "State.top/Thread.setTop" {
     try withProgressiveAllocator(struct {
         fn testCase(alloc: *std.mem.Allocator) anyerror!void {
             var state = try z.State.init(.{
@@ -467,7 +467,7 @@ test "Thread.top/Thread.setTop" {
     }.testCase);
 }
 
-test "Thread.pushValue" {
+test "State.pushValue" {
     try withProgressiveAllocator(struct {
         fn testCase(alloc: *std.mem.Allocator) anyerror!void {
             var state = try z.State.init(.{
@@ -508,7 +508,7 @@ test "Thread.pushValue" {
     }.testCase);
 }
 
-test "Thread.remove" {
+test "State.remove" {
     try withProgressiveAllocator(struct {
         fn testCase(alloc: *std.mem.Allocator) anyerror!void {
             var state = try z.State.init(.{
@@ -540,7 +540,7 @@ test "Thread.remove" {
     }.testCase);
 }
 
-test "Thread.insert" {
+test "State.insert" {
     try withProgressiveAllocator(struct {
         fn testCase(alloc: *std.mem.Allocator) anyerror!void {
             var state = try z.State.init(.{
@@ -572,7 +572,7 @@ test "Thread.insert" {
     }.testCase);
 }
 
-test "Thread.replace" {
+test "State.replace" {
     try withProgressiveAllocator(struct {
         fn testCase(alloc: *std.mem.Allocator) anyerror!void {
             var state = try z.State.init(.{
@@ -604,7 +604,7 @@ test "Thread.replace" {
     }.testCase);
 }
 
-test "Thread.checkStack" {
+test "State.checkStack" {
     try withProgressiveAllocator(struct {
         fn testCase(alloc: *std.mem.Allocator) anyerror!void {
             var state = try z.State.init(.{
@@ -619,7 +619,7 @@ test "Thread.checkStack" {
     }.testCase);
 }
 
-test "Thread.xMove" {
+test "State.xMove" {
     try withProgressiveAllocator(struct {
         fn testCase(alloc: *std.mem.Allocator) anyerror!void {
             var state = try z.State.init(.{
@@ -646,7 +646,7 @@ test "Thread.xMove" {
     }.testCase);
 }
 
-test "Thread.equal" {
+test "State.equal" {
     try withProgressiveAllocator(struct {
         fn testCase(alloc: *std.mem.Allocator) anyerror!void {
             var state = try z.State.init(.{
@@ -665,7 +665,7 @@ test "Thread.equal" {
     }.testCase);
 }
 
-test "Thread.rawEqual" {
+test "State.rawEqual" {
     try withProgressiveAllocator(struct {
         fn testCase(alloc: *std.mem.Allocator) anyerror!void {
             var state = try z.State.init(.{
@@ -684,7 +684,7 @@ test "Thread.rawEqual" {
     }.testCase);
 }
 
-test "Thread.lessThan" {
+test "State.lessThan" {
     try withProgressiveAllocator(struct {
         fn testCase(alloc: *std.mem.Allocator) anyerror!void {
             var state = try z.State.init(.{
@@ -704,7 +704,7 @@ test "Thread.lessThan" {
     }.testCase);
 }
 
-test "Thread.valueType" {
+test "State.valueType" {
     try withProgressiveAllocator(struct {
         fn testCase(alloc: *std.mem.Allocator) anyerror!void {
             var state = try z.State.init(.{
@@ -730,7 +730,7 @@ test "Thread.valueType" {
     }.testCase);
 }
 
-test "Thread.typeName" {
+test "State.typeName" {
     try withProgressiveAllocator(struct {
         fn testCase(alloc: *std.mem.Allocator) anyerror!void {
             var state = try z.State.init(.{
@@ -759,7 +759,7 @@ test "Thread.typeName" {
     }.testCase);
 }
 
-test "Thread.getGlobal" {
+test "State.getGlobal" {
     try withProgressiveAllocator(struct {
         fn testCase(alloc: *std.mem.Allocator) anyerror!void {
             var state = try z.State.init(.{
@@ -776,7 +776,7 @@ test "Thread.getGlobal" {
     }.testCase);
 }
 
-test "Thread.getGlobalAnyType" {
+test "State.getGlobalAnyType" {
     try withProgressiveAllocator(struct {
         fn testCase(alloc: *std.mem.Allocator) anyerror!void {
             var state = try z.State.init(.{
@@ -793,7 +793,7 @@ test "Thread.getGlobalAnyType" {
     }.testCase);
 }
 
-test "Thread.setGlobalAnyType" {
+test "State.setGlobalAnyType" {
     try withProgressiveAllocator(struct {
         fn testCase(alloc: *std.mem.Allocator) anyerror!void {
             var state = try z.State.init(.{
@@ -815,7 +815,7 @@ test "Thread.setGlobalAnyType" {
     }.testCase);
 }
 
-test "Thread.isXXX" {
+test "State.isXXX" {
     try withProgressiveAllocator(struct {
         fn testCase(alloc: *std.mem.Allocator) anyerror!void {
             var state = try z.State.init(.{
@@ -841,7 +841,7 @@ test "Thread.isXXX" {
     }.testCase);
 }
 
-test "Thread.toXXX" {
+test "State.toXXX" {
     try withProgressiveAllocator(struct {
         fn testCase(alloc: *std.mem.Allocator) anyerror!void {
             var state = try z.State.init(.{
@@ -863,7 +863,7 @@ test "Thread.toXXX" {
     }.testCase);
 }
 
-test "Thread.objLen" {
+test "State.objLen" {
     try withProgressiveAllocator(struct {
         fn testCase(alloc: *std.mem.Allocator) anyerror!void {
             var state = try z.State.init(.{
@@ -884,7 +884,7 @@ test "Thread.objLen" {
     }.testCase);
 }
 
-test "Thread.openXXX" {
+test "State.openXXX" {
     try withProgressiveAllocator(struct {
         fn testCase(alloc: *std.mem.Allocator) anyerror!void {
             var state = try z.State.init(.{
@@ -966,7 +966,7 @@ test "Thread.openXXX" {
     }.testCase);
 }
 
-test "Thread.loadFile" {
+test "State.loadFile" {
     try withProgressiveAllocator(struct {
         fn testCase(alloc: *std.mem.Allocator) anyerror!void {
             var state = try z.State.init(.{
@@ -991,7 +991,7 @@ test "Thread.loadFile" {
     }.testCase);
 }
 
-test "Thread.doFile" {
+test "State.doFile" {
     try withProgressiveAllocator(struct {
         fn testCase(alloc: *std.mem.Allocator) anyerror!void {
             var state = try z.State.init(.{
@@ -1011,7 +1011,7 @@ test "Thread.doFile" {
     }.testCase);
 }
 
-test "Thread.loadString" {
+test "State.loadString" {
     try withProgressiveAllocator(struct {
         fn testCase(alloc: *std.mem.Allocator) anyerror!void {
             var state = try z.State.init(.{
@@ -1027,7 +1027,7 @@ test "Thread.loadString" {
     }.testCase);
 }
 
-test "Thread.doString" {
+test "State.doString" {
     try withProgressiveAllocator(struct {
         fn testCase(alloc: *std.mem.Allocator) anyerror!void {
             var state = try z.State.init(.{
