@@ -795,15 +795,15 @@ pub const State = struct {
     }
 
     /// Checks whether the function argument narg is a userdata of the type
-    /// `tname` (see Thread.newMetaTable).
+    /// T (see Thread.newMetaTable).
     ///
     /// This is the same as luaL_checkudata.
     pub fn checkUserData(
         self: Self,
         narg: c_int,
-        tname: [*c]const u8,
-    ) *anyopaque {
-        return c.luaL_checkudata(self.lua, narg, tname).?;
+        comptime T: type,
+    ) *T {
+        return @ptrCast(@alignCast(c.luaL_checkudata(self.lua, narg, @typeName(T)).?));
     }
 
     /// Checks whether the argument `narg` is of type T and returns it.
@@ -848,7 +848,7 @@ pub const State = struct {
                 switch (@typeInfo(T)) {
                     .pointer => |info| {
                         return switch (info.size) {
-                            .one => return self.checkAnyType(narg, *anyopaque),
+                            .one => return self.checkUserData(narg, info.child),
                             else => @compileError("pointer type of size " ++ @tagName(info.size) ++ " is not supported (" ++ @typeName(T) ++ ")"),
                         };
                     },
@@ -1533,16 +1533,16 @@ pub const State = struct {
         c.luaL_openlibs(self.lua);
     }
 
-    /// If the registry already has the key `tname`, returns false. Otherwise,
-    /// creates a new table to be used as a metatable for userdata, adds it to
-    /// the registry with key `tname`, and returns true.
+    /// If the registry already has a metatable for type T, returns false.
+    /// Otherwise, creates a new table to be used as a metatable for userdata,
+    /// adds it to the registry, and returns true.
     ///
     /// In both cases pushes onto the stack the final value associated with
-    /// `tname` in the registry.
+    /// T in the registry.
     ///
     /// This is the same as luaL_newmetatable.
-    pub fn newMetaTable(self: Self, tname: [*c]const u8) bool {
-        return c.luaL_newmetatable(self.lua, tname) != 0;
+    pub fn newMetaTable(self: Self, comptime T: type) bool {
+        return c.luaL_newmetatable(self.lua, @typeName(T)) != 0;
     }
 };
 

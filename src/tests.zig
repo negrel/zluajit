@@ -882,7 +882,7 @@ test "State.toXXX" {
             try testing.expect(state.toCFunction(z.Global) == null);
             try testing.expect(state.toNumber(z.Global) == 0);
             try testing.expect(state.toThread(z.Global) == null);
-            try testing.expect(state.toUserData(z.Global) == null);
+            try testing.expect(state.toUserData(z.Global, anyopaque) == null);
             try testing.expect(state.toPointer(z.Global) != null);
             try testing.expect(state.toString(z.Global) == null);
         }
