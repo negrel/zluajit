@@ -21,7 +21,7 @@ pub fn build(b: *std.Build) void {
     );
 
     const module = b.addModule("zluajit", .{
-        .root_source_file = b.path("src/root.zig"),
+        .root_source_file = b.path("src/zluajit.zig"),
         .target = target,
         .optimize = optimize,
         .link_libc = true,
