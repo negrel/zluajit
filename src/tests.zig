@@ -319,6 +319,24 @@ test "State.pushAnyType/Thread.popAnyType/Thread.valueType" {
                 try testing.expectEqual(pi, state.popAnyType(*anyopaque).?);
             }
 
+            // User data.
+            {
+                const UserData = struct {
+                    a: i32,
+                };
+
+                _ = try recoverCall(struct {
+                    pub fn newUserData(th: z.State) *UserData {
+                        const ptr = th.newUserData(UserData);
+                        ptr.a = 10;
+                        return ptr;
+                    }
+                }.newUserData, .{state});
+
+                const udata: *UserData = state.toAnyType(*UserData, -1).?;
+                try testing.expectEqual(10, udata.a);
+            }
+
             // Pointers.
             {
                 const pi: f64 = std.math.pi;
