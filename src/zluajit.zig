@@ -1411,6 +1411,13 @@ pub const State = struct {
         unreachable;
     }
 
+    /// Converts provided Zig error into a Lua error and raise it.
+    pub fn raiseError(self: Self, err: anyerror) noreturn {
+        self.pushString(@errorName(err)[0..]);
+        self.@"error"();
+        unreachable;
+    }
+
     /// Pops a key from the stack, and pushes a key-value pair from the table at
     /// the given index (the "next" pair after the given key). If there are no
     /// more elements in the table, then lua_next returns 0 (and pushes
