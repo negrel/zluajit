@@ -1,6 +1,7 @@
-//! Unopiniated Zig bindings for LuaJIT and Lua 5.1 / Lua 5.2.
+//! Unopiniated Zig bindings for LuaJIT.
 //!
-//! This library provides an idiomatic and convenient API to interact with Lua.
+//! This library provides a zero-cost, idiomatic, type-safe and convenient API
+//! to interact with Lua C API using Zig.
 
 const std = @import("std");
 const builtin = @import("builtin");
@@ -12,12 +13,12 @@ pub const State = struct {
     const Self = @This();
 
     /// Thread status.
-    const Status = enum(c_int) {
+    pub const Status = enum(c_int) {
         ok = 0,
         yield = c.LUA_YIELD,
     };
 
-    const Options = struct {
+    pub const Options = struct {
         /// Allocator used by Lua runtime. Pointer must outlive [State].
         allocator: *const std.mem.Allocator = &std.heap.c_allocator,
         /// Panic handler used by Lua runtime.
@@ -361,8 +362,9 @@ pub const State = struct {
     /// Converts the Lua value at the given acceptable index to a []const u8.
     /// The Lua value must be a string or a number; otherwise, the function
     /// returns null. If the value is a number, then toString also changes the
-    /// actual value in the stack to a string. (This change confuses lua_next
-    /// when toString is applied to keys during a table traversal.)
+    /// actual value in the stack to a string. (This change confuses
+    /// [Thread.next] when toString is applied to keys during a table
+    /// traversal.)
     ///
     /// toString returns a fully aligned pointer to a string inside the Lua
     /// state. This string always has a zero ('\0') after its last character
@@ -885,7 +887,9 @@ pub const State = struct {
     }
 
     /// Generates an error with a message like the following:
+    /// ```
     ///     location: bad argument narg to 'func' (tname expected, got rt)
+    /// ```
     /// where location is produced by Thread.where, func is the name of the
     /// current function, and `rt` is the type name of the actual argument.
     pub fn typeError(self: Self, narg: c_int, tname: [*c]const u8) noreturn {
@@ -894,7 +898,9 @@ pub const State = struct {
 
     /// Raises an error with the following message, where func is retrieved from
     /// the call stack:
+    /// ```
     ///     bad argument #<narg> to <func> (<extramsg>)
+    /// ```
     ///
     /// This is the same as luaL_argerror.
     pub fn argError(self: Self, narg: c_int, extramsg: [*c]const u8) noreturn {
@@ -921,7 +927,9 @@ pub const State = struct {
     /// Pushes onto the stack a string identifying the current position of the
     /// control at level lvl in the call stack. Typically this string has the
     /// following format:
+    /// ```
     ///     chunkname:currentline:
+    /// ```
     ///
     /// Level 0 is the running function, level 1 is the function that called the
     /// running function, etc.
@@ -1109,17 +1117,22 @@ pub const State = struct {
     ///
     /// The following example shows how the host program can do the equivalent
     /// to this Lua code:
+    /// ```
     ///      a = f("how", t.x, 14)
+    /// ```
     ///
     /// Here it is in Zig:
-    ///      thread.getGlobal("f");                     // function to be called
-    ///      thread.pushString("how");                           // 1st argument
-    ///      thread.getGlobal("t");                       // table to be indexed
-    ///      thread.getField(-1, "x");           // push result of t.x (2nd arg)
-    ///      thread.remove(-2);                     // remove 't' from the stack
-    ///      thread.pushInteger(14);                             // 3rd argument
-    ///      thread.call(3, 1);        // call 'f' with 3 arguments and 1 result
-    ///      thread.setGlobal("a");                            // set global 'a'
+    /// ```
+    ///      var state: zluajit.State = ...;
+    ///      state.getGlobal("f");                     // function to be called
+    ///      state.pushString("how");                           // 1st argument
+    ///      state.getGlobal("t");                       // table to be indexed
+    ///      state.getField(-1, "x");           // push result of t.x (2nd arg)
+    ///      state.remove(-2);                     // remove 't' from the stack
+    ///      state.pushInteger(14);                             // 3rd argument
+    ///      state.call(3, 1);        // call 'f' with 3 arguments and 1 result
+    ///      state.setGlobal("a");                            // set global 'a'
+    /// ```
     ///
     /// Note that the code above is "balanced": at its end, the stack is back
     /// to its original configuration. This is considered good programming
@@ -1157,7 +1170,8 @@ pub const State = struct {
         errfunc: c_int,
     ) CallError!void {
         const code = c.lua_pcall(self.lua, nargs, nresults, errfunc);
-        return callErrorFromInt(code);
+        try callErrorFromInt(code);
+        std.debug.assert(code == 0);
     }
 
     /// Calls the C function func in protected mode. func starts with only one
@@ -1292,7 +1306,9 @@ pub const State = struct {
     ///
     /// This function should only be called as the return expression of a
     /// [CFunction], as follows:
+    /// ```zig
     ///     return thread.yield(nresults);
+    /// ```
     ///
     /// When a [CFunction] calls [State.yield] in that way, the running
     /// coroutine suspends its execution, and the call to [State.@"resume"]
@@ -1302,9 +1318,8 @@ pub const State = struct {
     /// passed as results to [State.@"resume"].
     ///
     /// This is the same as lua_yield.
-    pub fn yield(self: Self, nresults: c_int) noreturn {
-        _ = c.lua_yield(self.lua, nresults);
-        unreachable;
+    pub fn yield(self: Self, nresults: c_int) c_int {
+        return c.lua_yield(self.lua, nresults);
     }
 
     /// Starts and resumes a coroutine in a given thread.
@@ -1345,7 +1360,8 @@ pub const State = struct {
 
     /// Controls the garbage collector.
     ///
-    /// This function performs several tasks, according to the value of the parameter what:
+    /// This function performs several tasks, according to the value of the
+    /// parameter what:
     ///
     /// * GcOp.stop: stops the garbage collector.
     /// * GcOp.restart: restarts the garbage collector.
@@ -1387,6 +1403,7 @@ pub const State = struct {
     ///
     /// A typical traversal looks like this:
     ///
+    /// ```zig
     ///     // table is in the stack at index 't'
     ///     state.pushNil(); // first key
     ///     while (state.next(t)) {
@@ -1398,6 +1415,8 @@ pub const State = struct {
     ///         // removes 'value'; keeps 'key' for next iteration
     ///         state.pop(1);
     ///     }
+    /// ```
+    ///
     /// While traversing a table, do not call [State.toString] directly on a
     /// key, unless you know that the key is actually a string. Recall that
     /// [State.toString] changes the value at the given index; this confuses
@@ -1538,10 +1557,9 @@ pub const LoadError = error{
 
 fn loadErrorFromInt(code: c_int) LoadError!void {
     return switch (code) {
-        0 => {},
         c.LUA_ERRSYNTAX => LoadError.InvalidSyntax,
         c.LUA_ERRMEM => LoadError.OutOfMemory,
-        else => unreachable,
+        else => {},
     };
 }
 
@@ -1558,11 +1576,10 @@ pub const LoadFileError = error{
 
 fn loadFileErrorFromInt(code: c_int) LoadFileError!void {
     return switch (code) {
-        0 => {},
         c.LUA_ERRSYNTAX => LoadFileError.InvalidSyntax,
         c.LUA_ERRMEM => LoadFileError.OutOfMemory,
         c.LUA_ERRFILE => LoadFileError.OpenRead,
-        else => unreachable,
+        else => {},
     };
 }
 
@@ -1583,11 +1600,10 @@ pub const CallError = error{
 
 fn callErrorFromInt(code: c_int) CallError!void {
     return switch (code) {
-        0 => {},
         c.LUA_ERRRUN => CallError.Runtime,
         c.LUA_ERRMEM => CallError.OutOfMemory,
         c.LUA_ERRERR => CallError.Handler,
-        else => unreachable,
+        else => {},
     };
 }
 
