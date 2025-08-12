@@ -1565,9 +1565,10 @@ pub const LoadError = error{
 
 fn loadErrorFromInt(code: c_int) LoadError!void {
     return switch (code) {
+        0 => {},
         c.LUA_ERRSYNTAX => LoadError.InvalidSyntax,
         c.LUA_ERRMEM => LoadError.OutOfMemory,
-        else => {},
+        else => unreachable,
     };
 }
 
@@ -1584,10 +1585,11 @@ pub const LoadFileError = error{
 
 fn loadFileErrorFromInt(code: c_int) LoadFileError!void {
     return switch (code) {
+        0 => {},
         c.LUA_ERRSYNTAX => LoadFileError.InvalidSyntax,
         c.LUA_ERRMEM => LoadFileError.OutOfMemory,
         c.LUA_ERRFILE => LoadFileError.OpenRead,
-        else => {},
+        else => unreachable,
     };
 }
 
@@ -1608,10 +1610,11 @@ pub const CallError = error{
 
 fn callErrorFromInt(code: c_int) CallError!void {
     return switch (code) {
+        0 => {},
         c.LUA_ERRRUN => CallError.Runtime,
         c.LUA_ERRMEM => CallError.OutOfMemory,
         c.LUA_ERRERR => CallError.Handler,
-        else => {},
+        else => unreachable,
     };
 }
 
