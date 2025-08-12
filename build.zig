@@ -29,13 +29,25 @@ pub fn build(b: *std.Build) void {
     });
 
     const lib = b.addStaticLibrary(.{
-        .name = "zlua",
+        .name = "zluajit",
         .root_module = module,
     });
     lib.linkLibrary(luajitLib);
 
     b.installArtifact(lib);
     b.installArtifact(luajitLib);
+
+    // Generate documentation.
+    {
+        const install_docs = b.addInstallDirectory(.{
+            .source_dir = lib.getEmittedDocs(),
+            .install_dir = .prefix,
+            .install_subdir = "docs",
+        });
+
+        const docs_step = b.step("docs", "Install docs into zig-out/docs");
+        docs_step.dependOn(&install_docs.step);
+    }
 
     const lib_unit_tests = b.addTest(.{
         .root_module = b.createModule(.{
