@@ -732,7 +732,7 @@ pub const State = struct {
     /// If def is not null, the function uses def as a default value when there
     /// is no argument narg or if this argument is nil.
     ///
-    /// This is a useful function for mapping strings to Zig enums. (The usual
+    /// This is a useful function for mapping strings to enums. (The usual
     /// convention in Lua libraries is to use strings instead of numbers to
     /// select options.)
     ///
@@ -852,6 +852,36 @@ pub const State = struct {
         }
 
         @compileError("can't check value of type " ++ @typeName(T) ++ " on Lua stack");
+    }
+
+    /// If the function argument arg is an integer (or convertible to an
+    /// integer), returns this integer. If this argument is absent or is nil,
+    /// returns `def`. Otherwise, raises an error.
+    ///
+    /// This is the same as luaL_optinteger.
+    pub fn optInteger(self: Self, arg: c_int, def: Integer) Integer {
+        return c.luaL_optinteger(self.lua, arg, def);
+    }
+
+    /// If the function argument arg is a string, returns this string. If this
+    /// argument is absent or is nil, returns `def`. Otherwise, raises an error.
+    ///
+    /// This function uses [Thread.toString] to get its result, so all
+    /// conversions and caveats of that function apply here.
+    ///
+    /// This is the same as luaL_optlstring.
+    pub fn optString(self: Self, arg: c_int, def: [*c]const u8) []const u8 {
+        var len: usize = 0;
+        const str = c.luaL_optlstring(self.lua, arg, def, &len);
+        return str[0..len];
+    }
+
+    /// If the function argument arg is a number, returns this number. If this
+    /// argument is absent or is nil, returns `def`. Otherwise, raises an error.
+    ///
+    /// This is the same as luaL_optnumber.
+    pub fn optNumber(self: Self, arg: c_int, def: Number) Number {
+        c.luaL_optnumber(self.lua, arg, def);
     }
 
     /// Generates an error with a message like the following:
