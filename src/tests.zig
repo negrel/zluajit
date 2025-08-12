@@ -1038,6 +1038,31 @@ test "State.doString" {
     }.testCase);
 }
 
+test "State.yield" {
+    try withProgressiveAllocator(struct {
+        fn testCase(alloc: *std.mem.Allocator) anyerror!void {
+            var state = try z.State.init(.{
+                .allocator = alloc,
+                .panicHandler = recoverableLuaPanic,
+            });
+            defer state.deinit();
+
+            const thread = try recoverCall(z.State.newThread, .{state});
+            try recoverCall(z.State.pushCFunction, .{
+                thread, struct {
+                    fn cfunc(lua: ?*z.c.lua_State) callconv(.c) c_int {
+                        const th = z.State.initFromCPointer(lua.?);
+                        return th.yield(0);
+                    }
+                }.cfunc,
+            });
+
+            const status = try thread.@"resume"(0);
+            try testing.expectEqual(z.State.Status.yield, status);
+        }
+    }.testCase);
+}
+
 test "State.isYieldable" {
     try withProgressiveAllocator(struct {
         fn testCase(alloc: *std.mem.Allocator) anyerror!void {
