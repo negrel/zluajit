@@ -948,7 +948,7 @@ pub const State = struct {
         return main;
     }
 
-    /// Pushes onto the stack the value t[k], where t is the value at the given
+    /// Pushes onto the stack the value `t[k]`, where t is the value at the given
     /// valid index and k is the value at the top of the stack.
     /// This function pops the key from the stack (putting the resulting value
     /// in its place). As in Lua, this function may trigger a metamethod for
@@ -959,7 +959,7 @@ pub const State = struct {
         c.lua_gettable(self.lua, index);
     }
 
-    /// Pushes onto the stack the value t[k], where t is the value at the given
+    /// Pushes onto the stack the value `t[k]`, where t is the value at the given
     /// valid index. As in Lua, this function may trigger a metamethod for the
     /// "index" event.
     ///
@@ -976,7 +976,7 @@ pub const State = struct {
         c.lua_rawget(self.lua, index);
     }
 
-    /// Pushes onto the stack the value t[n], where t is the value at the given
+    /// Pushes onto the stack the value `t[n]`, where t is the value at the given
     /// valid index. The access is raw; that is, it does not invoke metamethods.
     ///
     /// This is the same as lua_rawgeti.
@@ -1039,9 +1039,9 @@ pub const State = struct {
         c.lua_getfenv(self.lua, idx);
     }
 
-    /// Does the equivalent to t[k] = v, where t is the value at the given valid
-    /// index, v is the value at the top of the stack, and k is the value just
-    /// below the top.
+    /// Does the equivalent to `t[k] = v`, where t is the value at the given
+    /// valid index, v is the value at the top of the stack, and k is the value
+    /// just below the top.
     ///
     /// This function pops both the key and the value from the stack. As in Lua,
     /// this function may trigger a metamethod for the "newindex" event.
@@ -1051,8 +1051,8 @@ pub const State = struct {
         c.lua_settable(self.lua, idx);
     }
 
-    /// Does the equivalent to t[k] = v, where t is the value at the given valid
-    /// index and v is the value at the top of the stack.
+    /// Does the equivalent to `t[k] = v`, where t is the value at the given
+    /// valid index and v is the value at the top of the stack.
     /// This function pops the value from the stack. As in Lua, this function
     /// may trigger a metamethod for the "newindex" event.
     ///
@@ -1069,8 +1069,8 @@ pub const State = struct {
         c.lua_rawset(self.lua, idx);
     }
 
-    /// Does the equivalent of t[n] = v, where t is the value at the given valid
-    /// index and v is the value at the top of the stack.
+    /// Does the equivalent of `t[n] = v`, where t is the value at the given
+    /// valid index and v is the value at the top of the stack.
     /// This function pops the value from the stack. The assignment is raw; that
     /// is, it does not invoke metamethods.
     ///
@@ -1696,6 +1696,16 @@ pub const TableRef = struct {
 
     pub fn init(ref: ValueRef) Self {
         return .{ .ref = ref };
+    }
+
+    /// Does the equivalent to `t[k] = v`.
+    /// As in Lua, this function may trigger a metamethod for the "newindex"
+    /// event.
+    ///
+    /// This is the same as lua_setfield.
+    pub fn set(self: Self, k: [*c]const u8, v: anytype) void {
+        self.ref.thread.pushAnyType(v);
+        self.ref.thread.setField(self.ref.idx, k);
     }
 };
 
