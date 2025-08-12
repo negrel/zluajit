@@ -336,50 +336,6 @@ test "State.pushAnyType/Thread.popAnyType/Thread.valueType" {
     }.testCase);
 }
 
-test "State.pushZigFunction" {
-    var state = try z.State.init(.{});
-    defer state.deinit();
-
-    const zfunc = z.wrapFn(struct {
-        pub fn zfunc(a: f64, b: f64) f64 {
-            return a + b;
-        }
-    }.zfunc);
-
-    state.pushCFunction(zfunc);
-    state.pushInteger(1);
-    state.pushInteger(2);
-    state.call(2, 1);
-    try testing.expectEqual(3, state.toInteger(-1));
-
-    // Missing argument.
-    state.pushCFunction(zfunc);
-    state.pushInteger(1);
-    state.pCall(1, 1, 0) catch {
-        try testing.expectEqualStrings(
-            "bad argument #2 to '?' (number expected, got no value)",
-            state.popAnyType([]const u8).?,
-        );
-
-        // Return Zig error.
-        state.pushCFunction(z.wrapFn(struct {
-            fn fail() !void {
-                return std.mem.Allocator.Error.OutOfMemory;
-            }
-        }.fail));
-        state.pCall(0, 0, 0) catch {
-            try testing.expectEqualStrings(
-                "OutOfMemory",
-                state.popAnyType([]const u8).?,
-            );
-        };
-
-        return;
-    };
-
-    unreachable;
-}
-
 test "State.error" {
     var state = try z.State.init(.{});
     defer state.deinit();
@@ -1109,4 +1065,78 @@ test "State.isYieldable" {
             try testing.expect(yieldable.?);
         }
     }.testCase);
+}
+
+test "wrapFn" {
+    var state = try z.State.init(.{});
+    defer state.deinit();
+
+    const zfunc = z.wrapFn(struct {
+        pub fn zfunc(th: z.State, a: f64, b: f64) !f64 {
+            try testing.expectEqual(a, th.checkNumber(-2));
+            try testing.expectEqual(b, th.checkNumber(-1));
+
+            return a + b;
+        }
+    }.zfunc);
+
+    state.pushCFunction(zfunc);
+    state.pushInteger(1);
+    state.pushInteger(2);
+    state.call(2, 1);
+    try testing.expectEqual(3, state.toInteger(-1));
+
+    // Missing argument.
+    state.pushCFunction(zfunc);
+    state.pushInteger(1);
+    var result = state.pCall(1, 1, 0);
+    if (result) {
+        unreachable;
+    } else |err| {
+        try testing.expectEqual(error.Runtime, err);
+        try testing.expectEqualStrings(
+            "bad argument #2 to '?' (number expected, got no value)",
+            state.popAnyType([]const u8).?,
+        );
+    }
+
+    // Return Zig error.
+    state.pushCFunction(z.wrapFn(struct {
+        fn fail() !void {
+            return std.mem.Allocator.Error.OutOfMemory;
+        }
+    }.fail));
+    result = state.pCall(0, 0, 0);
+    if (result) {
+        unreachable;
+    } else |err| {
+        try testing.expectEqual(error.Runtime, err);
+        try testing.expectEqualStrings(
+            "OutOfMemory",
+            state.popAnyType([]const u8).?,
+        );
+    }
+
+    // Thread arguments.
+    state.pushCFunction(z.wrapFn(struct {
+        fn thread1(st: z.State, thread: z.State) z.State {
+            _ = thread;
+            return st;
+        }
+    }.thread1));
+    const thread = state.newThread();
+    state.call(1, 1);
+    try testing.expectEqual(state.lua, state.popAnyType(z.State).?.lua);
+    try testing.expect(thread.lua != state.lua);
+
+    // Thread arguments.
+    state.pushCFunction(z.wrapFn(struct {
+        fn thread1(st: z.State, th: z.State) z.State {
+            _ = st;
+            return th;
+        }
+    }.thread1));
+    state.pushAnyType(thread);
+    state.call(1, 1);
+    try testing.expectEqual(thread.lua, state.popAnyType(z.State).?.lua);
 }

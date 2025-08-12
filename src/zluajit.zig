@@ -1786,30 +1786,39 @@ pub fn wrapFn(func: anytype) CFunction {
             const th = State.initFromCPointer(lua.?);
 
             var args: std.meta.ArgsTuple(Func) = undefined;
+
+            comptime var threadForwarded = false;
+            comptime var i = 1;
             inline for (
                 &args,
                 info.params,
-                1..info.params.len + 1,
-            ) |*arg, p, i| {
-                if (p.type == State and i == 1) {
+            ) |*arg, p| {
+                if (!threadForwarded and p.type == State and i == 1) {
                     arg.* = th;
+                    threadForwarded = true;
+                    continue;
                 } else arg.* = th.checkAnyType(i, p.type.?);
+                i += 1;
             }
 
-            var result = @call(.auto, func, args);
-
+            const result = @call(.auto, func, args);
+            switch (@typeInfo(info.return_type.?)) {
+                .error_union => |err_union| {
+                    if (result) |r| {
+                        if (err_union.payload != void) {
+                            th.pushAnyType(r);
+                            return 1;
+                        } else {
+                            return 0;
+                        }
+                    } else |err| {
+                        th.pushString(@errorName(err));
+                        th.@"error"();
+                    }
+                },
+                else => {},
+            }
             if (info.return_type.? != void) {
-                switch (@typeInfo(info.return_type.?)) {
-                    .error_union => |err_union| {
-                        result = result catch |err| {
-                            th.pushString(@errorName(err));
-                            th.@"error"();
-                        };
-                        if (err_union.payload == void) return 0;
-                    },
-                    else => {},
-                }
-
                 th.pushAnyType(result);
                 return 1;
             }
