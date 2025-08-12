@@ -34,10 +34,8 @@ pub fn main() !void {
     const state = try zluajit.State.init(.{});
     defer state.deinit();
 
-    const thread = state.asThread();
-
-    thread.openLibs();
-    try thread.doString("print 'hello world'", null);
+    state.openLibs();
+    try state.doString("print 'hello world'", null);
 }
 ```
 
