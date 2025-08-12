@@ -1098,7 +1098,7 @@ pub const State = struct {
     ///
     /// This is the same as lua_setmetatable.
     pub fn setMetaTable(self: Self, objindex: c_int) void {
-        c.lua_setmetatable(self.lua, objindex);
+        _ = c.lua_setmetatable(self.lua, objindex);
     }
 
     /// Pops a table from the stack and sets it as the new environment for the
@@ -1685,6 +1685,13 @@ pub const ValueRef = struct {
         std.debug.assert(self.valueType() == .function);
         return FunctionRef.init(self);
     }
+
+    /// Converts referenced value to a pointer.
+    ///
+    /// Typically this function is used only for debug information.
+    pub fn toPointer(self: Self) ?*const anyopaque {
+        return self.thread.toPointer(self.idx);
+    }
 };
 
 /// Pseudo-index of table holding global variables.
@@ -1720,6 +1727,23 @@ pub const TableRef = struct {
     pub fn set(self: Self, k: [*c]const u8, v: anytype) void {
         self.ref.thread.pushAnyType(v);
         self.ref.thread.setField(self.ref.idx, k);
+    }
+
+    /// Does equivalent to `setmetatable(t, mt)` where `mt` is this table and
+    /// `t` is table / userdata at index `idx`.
+    pub fn asMetaTableOf(self: Self, idx: c_int) void {
+        self.ref.thread.pushValue(self.ref.idx);
+        self.ref.thread.setMetaTable(idx);
+    }
+
+    /// Pushes metatable associated to this table onto the stack and returns a
+    /// reference to it.
+    pub fn getMetaTable(self: Self) ?TableRef {
+        if (self.ref.thread.getMetaTable(self.ref.idx)) {
+            return self.ref.thread.toAnyType(TableRef, -1).?;
+        }
+
+        return null;
     }
 };
 
