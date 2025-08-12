@@ -7,7 +7,14 @@ const Step = std.Build.Step;
 
 const applyPatchToFile = @import("patch.zig").applyPatchToFile;
 
-pub fn configure(b: *Build, target: Build.ResolvedTarget, optimize: std.builtin.OptimizeMode, upstream: *Build.Dependency, shared: bool) *Step.Compile {
+pub fn configure(
+    b: *Build,
+    target: Build.ResolvedTarget,
+    optimize: std.builtin.OptimizeMode,
+    upstream: *Build.Dependency,
+    shared: bool,
+    lua52_compat: bool,
+) *Step.Compile {
     // TODO: extract this to the main build function because it is shared between all specialized build functions
 
     const lib = b.createModule(.{
@@ -213,6 +220,9 @@ pub fn configure(b: *Build, target: Build.ResolvedTarget, optimize: std.builtin.
     library.linkLibC();
 
     lib.addCMacro("LUAJIT_UNWIND_EXTERNAL", "");
+
+    if (lua52_compat)
+        lib.addCMacro("LUAJIT_ENABLE_LUA52COMPAT", "");
 
     lib.linkSystemLibrary("unwind", .{});
 
