@@ -340,20 +340,20 @@ test "State.pushZigFunction" {
     var state = try z.State.init(.{});
     defer state.deinit();
 
-    const zfunc = struct {
+    const zfunc = z.wrapFn(struct {
         pub fn zfunc(a: f64, b: f64) f64 {
             return a + b;
         }
-    }.zfunc;
+    }.zfunc);
 
-    state.pushZigFunction(zfunc);
+    state.pushCFunction(zfunc);
     state.pushInteger(1);
     state.pushInteger(2);
     state.call(2, 1);
     try testing.expectEqual(3, state.toInteger(-1));
 
     // Missing argument.
-    state.pushZigFunction(zfunc);
+    state.pushCFunction(zfunc);
     state.pushInteger(1);
     state.pCall(1, 1, 0) catch {
         try testing.expectEqualStrings(
@@ -362,11 +362,11 @@ test "State.pushZigFunction" {
         );
 
         // Return Zig error.
-        state.pushZigFunction(struct {
+        state.pushCFunction(z.wrapFn(struct {
             fn fail() !void {
                 return std.mem.Allocator.Error.OutOfMemory;
             }
-        }.fail);
+        }.fail));
         state.pCall(0, 0, 0) catch {
             try testing.expectEqualStrings(
                 "OutOfMemory",
@@ -392,9 +392,8 @@ test "State.error" {
     }.zfunc;
 
     // Missing argument.
-    state.pushZigFunction(zfunc);
-    _ = state.pushThread();
-    state.pCall(1, 0, 0) catch {
+    state.pushCFunction(z.wrapFn(zfunc));
+    state.pCall(0, 0, 0) catch {
         try testing.expectEqualStrings(
             "a runtime error",
             state.popAnyType([]const u8).?,
@@ -1096,12 +1095,12 @@ test "State.isYieldable" {
 
             const thread = try recoverCall(z.State.newThread, .{state});
 
-            try recoverCall(z.State.pushZigFunction, .{
-                thread, struct {
+            try recoverCall(z.State.pushCFunction, .{
+                thread, z.wrapFn(struct {
                     fn zigFunc(th: z.State) bool {
                         return th.isYieldable();
                     }
-                }.zigFunc,
+                }.zigFunc),
             });
 
             _ = try thread.@"resume"(0);

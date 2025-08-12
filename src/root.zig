@@ -583,59 +583,6 @@ pub const State = struct {
         c.lua_pushcfunction(self.lua, cfn);
     }
 
-    /// Pushes a Zig function onto the stack.
-    ///
-    /// This function generates a [CFunction] wrapper at comptimes that takes
-    /// care of extracting argument from stack and pushing result onto the
-    /// stack.
-    /// If function first argument is of type [State], this state will be passed
-    /// as argument. If you want to receive a coroutine as first argument, your
-    /// function must take 2 [State] argument:
-    ///     fn myZigFunction(callingState: State, argState: State) void {
-    ///         //...
-    ///     }
-    pub fn pushZigFunction(self: Self, func: anytype) void {
-        const Func = @TypeOf(func);
-        const info = @typeInfo(Func).@"fn";
-
-        self.pushCFunction(struct {
-            fn cfunc(lua: ?*c.lua_State) callconv(.c) c_int {
-                const th = State.initFromCPointer(lua.?);
-
-                var args: std.meta.ArgsTuple(Func) = undefined;
-                inline for (
-                    &args,
-                    info.params,
-                    1..info.params.len + 1,
-                ) |*arg, p, i| {
-                    if (p.type == Self and i == 1) {
-                        arg.* = th;
-                    } else arg.* = th.checkAnyType(i, p.type.?);
-                }
-
-                var result = @call(.auto, func, args);
-
-                if (info.return_type.? != void) {
-                    switch (@typeInfo(info.return_type.?)) {
-                        .error_union => |err_union| {
-                            result = result catch |err| {
-                                th.pushString(@errorName(err));
-                                th.@"error"();
-                            };
-                            if (err_union.payload == void) return 0;
-                        },
-                        else => {},
-                    }
-
-                    th.pushAnyType(result);
-                    return 1;
-                }
-
-                return 0;
-            }
-        }.cfunc);
-    }
-
     /// Pushes a light userdata onto the stack.
     ///
     /// Userdata represent C values in Lua. A light userdata represents a
@@ -681,7 +628,6 @@ pub const State = struct {
                 if (v.lua != self.lua) v.xMove(self, 1);
                 return;
             },
-            // TODO: userdata => {},
             Value => return switch (v) {
                 .boolean => self.pushAnyType(v.boolean),
                 .function => self.pushAnyType(v.function),
@@ -1789,4 +1735,56 @@ pub fn luaPanic(lua: ?*c.lua_State) callconv(.c) c_int {
     const state = State.initFromCPointer(lua.?);
     state.dumpStack();
     @panic("lua panic");
+}
+
+/// Wraps a Zig function into a [CFunction] at comptime that takes care of
+/// extracting argument from stack and pushing result onto the stack.
+/// Zig errors are converted to string.
+///
+/// If function first argument is of type [State], this state will be passed
+/// as argument. If you want to receive a coroutine as first argument, your
+/// function must take 2 [State] argument:
+///     fn myZigFunction(callingState: State, argState: State) void {
+///         //...
+///     }
+pub fn wrapFn(func: anytype) CFunction {
+    const Func = @TypeOf(func);
+    const info = @typeInfo(Func).@"fn";
+
+    return struct {
+        fn cfunc(lua: ?*c.lua_State) callconv(.c) c_int {
+            const th = State.initFromCPointer(lua.?);
+
+            var args: std.meta.ArgsTuple(Func) = undefined;
+            inline for (
+                &args,
+                info.params,
+                1..info.params.len + 1,
+            ) |*arg, p, i| {
+                if (p.type == State and i == 1) {
+                    arg.* = th;
+                } else arg.* = th.checkAnyType(i, p.type.?);
+            }
+
+            var result = @call(.auto, func, args);
+
+            if (info.return_type.? != void) {
+                switch (@typeInfo(info.return_type.?)) {
+                    .error_union => |err_union| {
+                        result = result catch |err| {
+                            th.pushString(@errorName(err));
+                            th.@"error"();
+                        };
+                        if (err_union.payload == void) return 0;
+                    },
+                    else => {},
+                }
+
+                th.pushAnyType(result);
+                return 1;
+            }
+
+            return 0;
+        }
+    }.cfunc;
 }
