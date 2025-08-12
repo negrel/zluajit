@@ -1278,3 +1278,22 @@ test "TableRef.asMetaTableOf/TableRef.getMetaTable" {
         }
     }.testCase);
 }
+
+test "TableRef.get/TableRef.set" {
+    try withProgressiveAllocator(struct {
+        fn testCase(alloc: *std.mem.Allocator) anyerror!void {
+            var state = try z.State.init(.{
+                .allocator = alloc,
+                .panicHandler = recoverableLuaPanic,
+            });
+            defer state.deinit();
+
+            try recoverCall(z.State.newTable, .{state});
+
+            const tab = state.toAnyType(z.TableRef, -1).?;
+
+            try recoverCall(z.TableRef.set, .{ tab, "foo", true });
+            try testing.expect(tab.get("foo", bool).?);
+        }
+    }.testCase);
+}
