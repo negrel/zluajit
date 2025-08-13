@@ -1840,20 +1840,21 @@ fn luaAlloc(
     ptr: ?*anyopaque,
     osize: usize,
     nsize: usize,
-) callconv(.c) ?*anyopaque {
+) callconv(.c) ?*align(@sizeOf(std.c.max_align_t)) anyopaque {
     const alloc: *std.mem.Allocator = @ptrCast(@alignCast(ud.?));
 
-    var result: ?*anyopaque = ptr;
-    if (ptr == null) {
-        const bslice = alloc.alloc(u8, nsize) catch return null;
-        result = bslice.ptr;
+    if (@as(?[*]align(@sizeOf(std.c.max_align_t)) u8, @ptrCast(@alignCast(ptr)))) |aligned_ptr| {
+        var slice = aligned_ptr[0..osize];
+        slice = alloc.realloc(slice, nsize) catch return null;
+        return slice.ptr;
     } else {
-        var bslice: []u8 = @as([*]u8, @ptrCast(ptr))[0..osize];
-        bslice = alloc.realloc(bslice, nsize) catch return null;
-        result = bslice.ptr;
+        const slice = alloc.alignedAlloc(
+            u8,
+            @sizeOf(std.c.max_align_t),
+            nsize,
+        ) catch return null;
+        return slice.ptr;
     }
-
-    return result;
 }
 
 /// Panic function called by lua before aborting. This functions dumps lua stack
