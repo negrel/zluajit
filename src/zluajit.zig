@@ -1046,6 +1046,14 @@ pub const State = struct {
         return @ptrCast(@alignCast(c.lua_newuserdata(self.lua, @sizeOf(T)).?));
     }
 
+    /// Allocates an array of `n` items of type T. This is the same as
+    /// State.newUserData but for slices.
+    pub fn newUserDataSlice(self: Self, comptime T: type, n: usize) []T {
+        // LuaJIT panic if not enough memory.
+        const s: [*]T = @ptrCast(@alignCast(c.lua_newuserdata(self.lua, n * @sizeOf(T)).?));
+        return s[0..n];
+    }
+
     /// Pushes onto the stack the metatable of the value at the given acceptable
     /// index. If the index is not valid, or if the value does not have a
     /// metatable, the function returns false and pushes nothing on the stack.
