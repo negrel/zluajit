@@ -1339,3 +1339,59 @@ test "TableRef.get/TableRef.set" {
         }
     }.testCase);
 }
+
+var ref: c_int = -1;
+
+test "State.ref/State.unref" {
+    try withProgressiveAllocator(struct {
+        fn testCase(alloc: *std.mem.Allocator) anyerror!void {
+            var state = try z.State.init(.{
+                .allocator = alloc,
+                .panicHandler = recoverableLuaPanic,
+            });
+            defer state.deinit();
+
+            // Create reference.
+            try recoverCall(z.State.pushCFunction, .{
+                state, struct {
+                    fn cfunc(lua: ?*z.c.lua_State) callconv(.c) c_int {
+                        const th = z.State.initFromCPointer(lua.?);
+                        th.pushNumber(123);
+                        ref = th.ref(z.Registry) catch unreachable;
+                        th.pushInteger(ref);
+                        return 1;
+                    }
+                }.cfunc,
+            });
+            state.call(0, 0);
+
+            // Use & free reference.
+            try recoverCall(z.State.pushCFunction, .{
+                state, struct {
+                    fn cfunc(lua: ?*z.c.lua_State) callconv(.c) c_int {
+                        const th = z.State.initFromCPointer(lua.?);
+                        th.pushInteger(ref);
+                        th.rawGeti(z.Registry, ref);
+                        testing.expectEqual(123, th.toInteger(-1)) catch unreachable;
+                        th.unref(z.Registry, ref);
+                        return 0;
+                    }
+                }.cfunc,
+            });
+            state.call(0, 0);
+
+            // Reference doesn't exist anymore.
+            try recoverCall(z.State.pushCFunction, .{
+                state, struct {
+                    fn cfunc(lua: ?*z.c.lua_State) callconv(.c) c_int {
+                        const th = z.State.initFromCPointer(lua.?);
+                        th.rawGeti(z.Registry, ref);
+                        testing.expectEqual(0, th.toInteger(-1)) catch unreachable;
+                        return 0;
+                    }
+                }.cfunc,
+            });
+            state.call(0, 0);
+        }
+    }.testCase);
+}

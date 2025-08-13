@@ -1581,6 +1581,43 @@ pub const State = struct {
             if (tname != null) tname else @typeName(T),
         ) != 0;
     }
+
+    /// Creates and returns a reference, in the table at index `t`, for the
+    /// object at the top of the stack (and pops the object).
+    ///
+    /// A reference is a unique integer key. As long as you do not manually add
+    /// integer keys into table `t`, State.ref ensures the uniqueness of the key
+    /// it returns. You can retrieve an object referred by reference `r` by
+    /// calling `State.rawGeti(t, r)`. Function State.unref frees a reference
+    /// and its associated object.
+    ///
+    /// If the object at the top of the stack is nil, State.ref returns the
+    /// constant RefNil. The constant NoRef is guaranteed to be different from
+    /// any reference returned by luaL_ref.
+    ///
+    /// This is the same as luaL_ref.
+    pub fn ref(self: Self, t: c_int) RefError!c_int {
+        return switch (c.luaL_ref(self.lua, t)) {
+            c.LUA_NOREF => RefError.NoRef,
+            c.LUA_REFNIL => RefError.NilRef,
+            else => |r| r,
+        };
+    }
+
+    /// Releases reference ref from the table at index t (see State.ref). The
+    /// entry is removed from the table, so that the referred object can be
+    /// collected. The reference ref is also freed to be used again.
+    ///
+    /// This is the same as luaL_unref.
+    pub fn unref(self: Self, t: c_int, r: c_int) void {
+        c.luaL_unref(self.lua, t, r);
+    }
+};
+
+/// RefError defines possible error returned by State.ref.
+pub const RefError = error{
+    NilRef,
+    NoRef,
 };
 
 /// State.gc() operations.
@@ -1732,6 +1769,8 @@ pub const ValueRef = struct {
 pub const Global = c.LUA_GLOBALSINDEX;
 /// Pseudo-index of environment of the running C function.
 pub const Environment = c.LUA_ENVIRONINDEX;
+/// Pseudo-index of registry table.
+pub const Registry = c.LUA_REGISTRYINDEX;
 
 /// The type used by the Lua API to represent integral values.
 pub const Integer = c.lua_Integer;
