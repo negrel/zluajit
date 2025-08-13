@@ -1226,8 +1226,6 @@ test "newUserData" {
             });
             defer state.deinit();
 
-            try testing.expect(!state.isYieldable());
-
             const UserData = struct {
                 a: i32,
             };
@@ -1235,6 +1233,29 @@ test "newUserData" {
             _ = try recoverCall(struct {
                 fn func(st: z.State) *UserData {
                     return st.newUserData(UserData);
+                }
+            }.func, .{state});
+            _ = try recoverCall(z.State.checkValueType, .{
+                state,
+                -1,
+                .userdata,
+            });
+        }
+    }.testCase);
+}
+
+test "newUserDataSlice" {
+    try withProgressiveAllocator(struct {
+        fn testCase(alloc: *std.mem.Allocator) anyerror!void {
+            var state = try z.State.init(.{
+                .allocator = alloc,
+                .panicHandler = recoverableLuaPanic,
+            });
+            defer state.deinit();
+
+            _ = try recoverCall(struct {
+                fn func(st: z.State) []u8 {
+                    return st.newUserDataSlice(u8, 2);
                 }
             }.func, .{state});
             _ = try recoverCall(z.State.checkValueType, .{
