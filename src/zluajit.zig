@@ -946,20 +946,86 @@ pub const State = struct {
         c.luaL_argerror(self.lua, narg, extramsg);
     }
 
-    /// Dump state Lua stack using std.debug.print.
+    /// Dumps Lua stack using std.debug.print.
     pub fn dumpStack(self: Self) void {
-        std.debug.print("lua stack size {}\n", .{self.top()});
+        const print = std.debug.print;
+
+        print("lua stack size {}\n", .{self.top()});
         for (1..@as(usize, @intCast(self.top())) + 1) |i| {
-            const val = self.toAnyType(Value, @intCast(i));
-            if (val != null) {
-                if (val.? == .string) {
-                    std.debug.print("  stack[{}] '{s}'\n", .{ i, val.?.string });
-                } else {
-                    std.debug.print("  stack[{}] {}\n", .{ i, val.? });
+            print("  [{}] ", .{i});
+            self.dumpValue(@intCast(i));
+            print("\n", .{});
+        }
+    }
+
+    /// Recursively dumps value on Lua stack at index `t` using std.debug.print.
+    pub fn dumpValue(self: Self, idx: c_int) void {
+        var map = std.AutoHashMap(usize, void).init(std.heap.c_allocator);
+        defer map.deinit();
+        self._dumpValue(idx, &map, 0);
+    }
+
+    fn _dumpValue(self: Self, i: c_int, visited: *std.AutoHashMap(usize, void), depth: usize) void {
+        const print = std.debug.print;
+
+        var idx = i;
+        if (idx < 0 and idx > Registry) idx = self.top() + idx + 1;
+
+        const val = self.toAnyType(Value, idx);
+        if (val == null) {
+            print("null", .{});
+            return;
+        }
+
+        var ptr: usize = 0;
+        if (self.toPointer(idx)) |p| ptr = @intFromPtr(p);
+
+        switch (val.?) {
+            .boolean => |v| print("{}", .{v}),
+            .function => print("function@{x}", .{ptr}),
+            .lightuserdata => print("lightuserdata@{x}", .{ptr}),
+            .nil => print("nil", .{}),
+            .number => |n| print("{}", .{n}),
+            .string => |s| print("'{s}'", .{s}),
+            .table => {
+                if (visited.get(ptr)) |_| {
+                    print("table@{x}", .{ptr});
+                    return;
                 }
-            } else {
-                std.debug.print("  stack[{}] null\n", .{i});
-            }
+
+                visited.put(ptr, {}) catch @panic("OOM");
+
+                _ = self.checkStack(2);
+                print("table@{x} {s}\n", .{ ptr, "{" });
+                self.pushNil(); // first key
+                while (self.next(idx)) {
+                    // Padding.
+                    for (0..depth + 1) |_| print("  ", .{});
+
+                    // Key.
+                    {
+                        if (self.valueType(-2) != .string) print("[", .{});
+                        self._dumpValue(-2, visited, depth + 1);
+                        if (self.valueType(-2) != .string) print("]", .{});
+                    }
+
+                    print(" = ", .{});
+
+                    // Value.
+                    self._dumpValue(-1, visited, depth + 1);
+
+                    print(",\n", .{});
+
+                    // removes 'value'; keeps 'key' for next iteration
+                    self.pop(1);
+                }
+
+                // Padding.
+                for (0..depth) |_| print("  ", .{});
+                print("{s}", .{"}"});
+            },
+            .thread => print("thread@{x}", .{ptr}),
+            .userdata => print("userdata@{x}", .{ptr}),
         }
     }
 
@@ -1740,7 +1806,7 @@ pub const ValueRef = struct {
     pub fn init(thread: State, idx: c_int) Self {
         return .{
             .thread = thread,
-            .idx = if (idx < 0) thread.top() + idx + 1 else idx,
+            .idx = if (idx < 0 and idx > Registry) thread.top() + idx + 1 else idx,
         };
     }
 
