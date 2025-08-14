@@ -2031,6 +2031,9 @@ pub fn wrapFn(func: anytype) CFunction {
                 .error_union => |err_union| {
                     if (result) |r| {
                         if (err_union.payload != void) {
+                            if (err_union.payload == c_int) {
+                                return r;
+                            }
                             th.pushAnyType(r);
                             return 1;
                         } else {
