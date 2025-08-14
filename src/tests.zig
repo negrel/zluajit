@@ -1382,3 +1382,19 @@ test "State.ref/State.unref" {
         }
     }.testCase);
 }
+
+test "State.dumpValue" {
+    var state = try z.State.init(.{});
+
+    state.newTable();
+    const tab1 = state.toAnyType(z.TableRef, -1).?;
+    tab1.set("foo", @as([]const u8, "bar"));
+    tab1.set("bar", @as([]const u8, "baz"));
+
+    state.newTable();
+    const tab2 = state.toAnyType(z.TableRef, -1).?;
+    tab2.set("parent", tab1);
+    tab1.set("inner", tab2);
+
+    // state.dumpValue(tab1.ref.idx);
+}
