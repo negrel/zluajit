@@ -590,11 +590,25 @@ pub const State = struct {
     /// corresponding CFunction.
     ///
     /// Any function to be registered in Lua must follow the correct protocol to
-    /// receive its parameters and return its results (see lua_CFunction).
+    /// receive its parameters and return its results (see CFunction).
     ///
     /// This is the same as lua_pushcfunction.
     pub fn pushCFunction(self: Self, cfn: CFunction) void {
         c.lua_pushcfunction(self.lua, cfn);
+    }
+
+    /// Pushes a Zig function onto the stack.
+    ///
+    /// This function receives a pointer to a State and pushes onto the
+    /// stack a Lua value of type function that, when called, invokes the
+    /// corresponding Zig function.
+    ///
+    /// Any function to be registered in Lua must follow the correct protocol to
+    /// receive its parameters and return its results (see CFunction).
+    ///
+    /// This is similar to lua_pushcfunction.
+    pub fn pushZFunction(self: Self, zfn: anytype) void {
+        self.pushCFunction(wrapFn(zfn));
     }
 
     /// Pushes a light userdata onto the stack.
@@ -672,6 +686,7 @@ pub const State = struct {
                     },
                     .@"enum" => return self.pushString(@tagName(v)),
                     .int => return self.pushInteger(@intCast(v)),
+                    .@"fn" => return self.pushZFunction(v),
                     else => {},
                 }
             },
@@ -1044,14 +1059,6 @@ pub const State = struct {
     pub fn newUserData(self: Self, comptime T: type) *T {
         // LuaJIT panic if not enough memory.
         return @ptrCast(@alignCast(c.lua_newuserdata(self.lua, @sizeOf(T)).?));
-    }
-
-    /// Allocates an array of `n` items of type T. This is the same as
-    /// State.newUserData but for slices.
-    pub fn newUserDataSlice(self: Self, comptime T: type, n: usize) []T {
-        // LuaJIT panic if not enough memory.
-        const s: [*]T = @ptrCast(@alignCast(c.lua_newuserdata(self.lua, n * @sizeOf(T)).?));
-        return s[0..n];
     }
 
     /// Pushes onto the stack the metatable of the value at the given acceptable
@@ -1852,6 +1859,11 @@ pub const FunctionRef = struct {
 /// Lua can also return many results.
 pub const CFunction = *const fn (?*c.lua_State) callconv(.c) c_int;
 
+/// Type for Zig function.
+/// Zig functions are automatically converted to C functions.
+/// See CFunction for more details.
+pub const ZFunction = *const fn (State) c_int;
+
 /// The reader function used by Thread.load. Every time it needs another piece
 /// of the chunk, Thread.load calls the reader, passing along its data
 /// parameter.
@@ -1922,6 +1934,8 @@ pub fn luaPanic(lua: ?*c.lua_State) callconv(.c) c_int {
 ///     fn myZigFunction(callingState: State, argState: State) void {
 ///         //...
 ///     }
+///
+/// If function returns a value of type c_int.
 pub fn wrapFn(func: anytype) CFunction {
     const Func = @TypeOf(func);
     const info = @typeInfo(Func).@"fn";
@@ -1964,6 +1978,10 @@ pub fn wrapFn(func: anytype) CFunction {
                 else => {},
             }
             if (info.return_type.? != void) {
+                if (info.return_type == c_int) {
+                    return result;
+                }
+
                 th.pushAnyType(result);
                 return 1;
             }

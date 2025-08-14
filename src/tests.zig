@@ -224,12 +224,22 @@ test "State.pushAnyType/Thread.popAnyType/Thread.valueType" {
             // Function.
             {
                 const ns = struct {
-                    fn func(_: ?*z.c.lua_State) callconv(.c) c_int {
+                    fn cfn(_: ?*z.c.lua_State) callconv(.c) c_int {
+                        return 0;
+                    }
+                    fn zfn(_: z.State) c_int {
                         return 0;
                     }
                 };
 
-                try recoverCall(z.State.pushAnyType, .{ state, &ns.func });
+                try recoverCall(z.State.pushAnyType, .{ state, &ns.cfn });
+                try testing.expectEqual(state.valueType(-1), .function);
+                try testing.expectEqual(
+                    z.FunctionRef.init(z.ValueRef.init(state, state.top())),
+                    state.popAnyType(z.FunctionRef),
+                );
+
+                try recoverCall(z.State.pushAnyType, .{ state, ns.zfn });
                 try testing.expectEqual(state.valueType(-1), .function);
                 try testing.expectEqual(
                     z.FunctionRef.init(z.ValueRef.init(state, state.top())),
@@ -1233,29 +1243,6 @@ test "newUserData" {
             _ = try recoverCall(struct {
                 fn func(st: z.State) *UserData {
                     return st.newUserData(UserData);
-                }
-            }.func, .{state});
-            _ = try recoverCall(z.State.checkValueType, .{
-                state,
-                -1,
-                .userdata,
-            });
-        }
-    }.testCase);
-}
-
-test "newUserDataSlice" {
-    try withProgressiveAllocator(struct {
-        fn testCase(alloc: *std.mem.Allocator) anyerror!void {
-            var state = try z.State.init(.{
-                .allocator = alloc,
-                .panicHandler = recoverableLuaPanic,
-            });
-            defer state.deinit();
-
-            _ = try recoverCall(struct {
-                fn func(st: z.State) []u8 {
-                    return st.newUserDataSlice(u8, 2);
                 }
             }.func, .{state});
             _ = try recoverCall(z.State.checkValueType, .{
