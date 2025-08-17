@@ -950,10 +950,13 @@ pub const State = struct {
     pub fn dumpStack(self: Self) void {
         const print = std.debug.print;
 
+        var map = std.AutoHashMap(usize, void).init(std.heap.c_allocator);
+        defer map.deinit();
+
         print("lua stack size {}\n", .{self.top()});
         for (1..@as(usize, @intCast(self.top())) + 1) |i| {
             print("  [{}] ", .{i});
-            self.dumpValue(@intCast(i));
+            self.dumpNestedValue(@intCast(i), &map, 1);
             print("\n", .{});
         }
     }
@@ -962,10 +965,10 @@ pub const State = struct {
     pub fn dumpValue(self: Self, idx: c_int) void {
         var map = std.AutoHashMap(usize, void).init(std.heap.c_allocator);
         defer map.deinit();
-        self._dumpValue(idx, &map, 0);
+        self.dumpNestedValue(idx, &map, 0);
     }
 
-    fn _dumpValue(self: Self, i: c_int, visited: *std.AutoHashMap(usize, void), depth: usize) void {
+    fn dumpNestedValue(self: Self, i: c_int, visited: *std.AutoHashMap(usize, void), depth: usize) void {
         const print = std.debug.print;
 
         var idx = i;
@@ -1005,14 +1008,14 @@ pub const State = struct {
                     // Key.
                     {
                         if (self.valueType(-2) != .string) print("[", .{});
-                        self._dumpValue(-2, visited, depth + 1);
+                        self.dumpNestedValue(-2, visited, depth + 1);
                         if (self.valueType(-2) != .string) print("]", .{});
                     }
 
                     print(" = ", .{});
 
                     // Value.
-                    self._dumpValue(-1, visited, depth + 1);
+                    self.dumpNestedValue(-1, visited, depth + 1);
 
                     print(",\n", .{});
 
@@ -2040,8 +2043,7 @@ pub fn wrapFn(func: anytype) CFunction {
                             return 0;
                         }
                     } else |err| {
-                        th.pushString(@errorName(err));
-                        th.@"error"();
+                        th.raiseError(err);
                     }
                 },
                 else => {},
