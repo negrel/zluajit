@@ -932,7 +932,8 @@ pub const State = struct {
     /// where location is produced by Thread.where, func is the name of the
     /// current function, and `rt` is the type name of the actual argument.
     pub fn typeError(self: Self, narg: c_int, tname: [*c]const u8) noreturn {
-        c.luaL_typerror(self.lua, narg, tname);
+        _ = c.luaL_typerror(self.lua, narg, tname);
+        unreachable;
     }
 
     /// Raises an error with the following message, where func is retrieved from
@@ -943,7 +944,8 @@ pub const State = struct {
     ///
     /// This is the same as luaL_argerror.
     pub fn argError(self: Self, narg: c_int, extramsg: [*c]const u8) noreturn {
-        c.luaL_argerror(self.lua, narg, extramsg);
+        _ = c.luaL_argerror(self.lua, narg, extramsg);
+        unreachable;
     }
 
     /// Dumps Lua stack using std.debug.print.
