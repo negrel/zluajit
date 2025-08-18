@@ -1254,7 +1254,7 @@ test "newUserData" {
     }.testCase);
 }
 
-test "checkEnum" {
+test "State.checkEnum" {
     try withProgressiveAllocator(struct {
         fn testCase(alloc: *std.mem.Allocator) anyerror!void {
             var state = try z.State.init(.{
@@ -1281,6 +1281,43 @@ test "checkEnum" {
                 .foo,
                 try recoverCall(checkEnum, .{state}),
             );
+        }
+    }.testCase);
+}
+
+test "State.checkUserData" {
+    try withProgressiveAllocator(struct {
+        fn testCase(alloc: *std.mem.Allocator) anyerror!void {
+            var state = try z.State.init(.{
+                .allocator = alloc,
+                .panicHandler = recoverableLuaPanic,
+            });
+            defer state.deinit();
+
+            const UserData = struct {
+                pub const zluajitTName = "MyUserData";
+
+                a: i32,
+            };
+
+            const funcs = struct {
+                fn newUserData(th: z.State) *UserData {
+                    const ud = th.newUserData(UserData);
+                    _ = th.newMetaTable(UserData);
+                    ud.a = 123;
+                    return ud;
+                }
+
+                fn checkUserData(th: z.State) *UserData {
+                    _ = th.checkUserDataWithName(-1, UserData.zluajitTName, anyopaque);
+                    return th.checkUserData(-1, UserData);
+                }
+            };
+
+            _ = try recoverCall(funcs.newUserData, .{state});
+            state.setMetaTable(-2);
+            const ud = try recoverCall(funcs.checkUserData, .{state});
+            try testing.expectEqual(123, ud.a);
         }
     }.testCase);
 }

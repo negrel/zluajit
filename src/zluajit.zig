@@ -816,21 +816,28 @@ pub const State = struct {
     /// Checks whether the function argument narg is a userdata of the type
     /// `tname` (see Thread.newMetaTable).
     ///
-    /// If `tname` is null, @typeName(T) is used as `tname`.
+    /// See State.checkUserData for a more Zig friendly version.
     ///
+    /// This is the same as luaL_checkudata.
+    pub fn checkUserDataWithName(
+        self: Self,
+        narg: c_int,
+        tname: [*:0]const u8,
+        comptime T: type,
+    ) *T {
+        return @ptrCast(@alignCast(c.luaL_checkudata(self.lua, narg, tname).?));
+    }
+
+    /// Checks whether the function argument narg is a userdata of type T
+    /// (see Thread.newMetaTable).
     ///
-    /// This is the similar to luaL_checkudata.
+    /// This is similar to luaL_checkudata.
     pub fn checkUserData(
         self: Self,
         narg: c_int,
         comptime T: type,
-        tname: [*c]const u8,
     ) *T {
-        return @ptrCast(@alignCast(c.luaL_checkudata(
-            self.lua,
-            narg,
-            if (tname != null) tname else @typeName(T),
-        ).?));
+        return self.checkUserDataWithName(narg, tName(T), T);
     }
 
     /// Checks whether the argument `narg` is of type T and returns it.
@@ -875,7 +882,7 @@ pub const State = struct {
                 switch (@typeInfo(T)) {
                     .pointer => |info| {
                         return switch (info.size) {
-                            .one => return self.checkUserData(narg, info.child, null),
+                            .one => return self.checkUserData(narg, info.child),
                             else => @compileError("pointer type of size " ++ @tagName(info.size) ++ " is not supported (" ++ @typeName(T) ++ ")"),
                         };
                     },
@@ -1646,18 +1653,49 @@ pub const State = struct {
     /// In both cases pushes onto the stack the final value associated with
     /// `tname` in the registry.
     ///
-    /// If `tname` is null, @typeName(T) is used as `tname`.
+    /// See State.newMetaTable for a more Zig friendly version.
     ///
     /// This is the same as luaL_newmetatable.
-    pub fn newMetaTable(
+    pub fn newMetaTableWithName(
         self: Self,
-        comptime T: type,
-        tname: [*c]const u8,
+        tname: [*:0]const u8,
     ) bool {
-        return c.luaL_newmetatable(
-            self.lua,
-            if (tname != null) tname else @typeName(T),
-        ) != 0;
+        return c.luaL_newmetatable(self.lua, tname) != 0;
+    }
+
+    /// If the registry already has a table for tname of T, returns false.
+    /// Otherwise, creates a new table to be used as a metatable for userdata,
+    /// adds it to the registry, and returns true.
+    ///
+    /// In both cases pushes onto the stack the final value associated with
+    /// T in the registry.
+    ///
+    /// This is similar to State.newMetaTableWithName where `tname` is
+    /// T.zluajitTName if it exists or @typeName(T).
+    ///
+    /// ```
+    /// // In file foo.zig
+    ///
+    /// const Foo = struct {
+    ///     pub const zluajitTName = "foo.Bar";
+    /// };
+    ///
+    /// const Bar = struct {};
+    ///
+    /// pub fn main() {
+    ///     // ....
+    ///     var state: zluajit.State = ...;
+    ///
+    ///     var exists = state.newMetaTable(Foo);
+    ///     // exists is false
+    ///
+    ///     exists = state.newMetaTable(Bar);
+    ///     // exists is true as Foo.zluajitTName == @typeName(Bar)
+    ///     // Foo and Bar shares the same metatable.
+    /// }
+    /// ```
+    pub fn newMetaTable(self: Self, comptime T: type) bool {
+        return self.newMetaTableWithName(tName(T));
     }
 
     /// Creates and returns a reference, in the table at index `t`, for the
@@ -2062,4 +2100,13 @@ pub fn wrapFn(func: anytype) CFunction {
             return 0;
         }
     }.cfunc;
+}
+
+/// Returns T.zluajitTName if it exists and @typeName(T) otherwise.
+///
+/// This function is used by State.newMetaTable and State.checkUserData.
+pub fn tName(comptime T: type) [*:0]const u8 {
+    const tnameField = "zluajitTName";
+    if (@hasDecl(T, tnameField)) return @field(T, tnameField);
+    return @typeName(T);
 }
