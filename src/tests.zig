@@ -1366,7 +1366,7 @@ test "TableRef.get/TableRef.set" {
 
 var ref: c_int = -1;
 
-test "State.ref/State.unref" {
+test "State.refValue/State.unref" {
     try withProgressiveAllocator(struct {
         fn testCase(alloc: *std.mem.Allocator) anyerror!void {
             var state = try z.State.init(.{
@@ -1381,7 +1381,7 @@ test "State.ref/State.unref" {
                     fn cfunc(lua: ?*z.c.lua_State) callconv(.c) c_int {
                         const th = z.State.initFromCPointer(lua.?);
                         th.pushNumber(123);
-                        ref = th.ref(z.Registry) catch unreachable;
+                        ref = th.refValue(z.Registry, -1) catch unreachable;
                         th.pushInteger(ref);
                         return 1;
                     }

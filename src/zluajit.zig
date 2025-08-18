@@ -1720,6 +1720,24 @@ pub const State = struct {
         };
     }
 
+    /// Creates and returns a reference, in the table at index `t`, for the
+    /// object at stack index `idx`.
+    /// A reference is a unique integer key. As long as you do not manually add
+    /// integer keys into table `t`, State.ref ensures the uniqueness of the key
+    /// it returns. You can retrieve an object referred by reference `r` by
+    /// calling `State.rawGeti(t, r)`. Function State.unref frees a reference
+    /// and its associated object.
+    ///
+    /// If the object at the top of the stack is nil, State.ref returns the
+    /// constant RefNil. The constant NoRef is guaranteed to be different from
+    /// any reference returned by luaL_ref.
+    ///
+    /// This is similar to luaL_ref.
+    pub fn refValue(self: Self, t: c_int, idx: c_int) RefError!c_int {
+        self.pushValue(idx);
+        return self.ref(t);
+    }
+
     /// Releases reference ref from the table at index t (see State.ref). The
     /// entry is removed from the table, so that the referred object can be
     /// collected. The reference ref is also freed to be used again.
