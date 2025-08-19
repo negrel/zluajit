@@ -870,6 +870,10 @@ pub const State = struct {
                 self.checkValueType(narg, .thread);
                 return self.toThread(narg).?.lua;
             },
+            *anyopaque => {
+                self.checkValueType(narg, .lightuserdata);
+                return self.toAnyType(T, narg).?;
+            },
             State => {
                 self.checkValueType(narg, .thread);
                 return self.toThread(narg).?;
