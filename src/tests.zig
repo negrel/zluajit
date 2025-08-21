@@ -343,7 +343,7 @@ test "State.pushAnyType/Thread.popAnyType/Thread.valueType" {
                     }
                 }.newUserData, .{state});
 
-                const udata: *UserData = state.toAnyType(*UserData, -1).?;
+                const udata: *UserData = state.toAnyType(-1, *UserData).?;
                 try testing.expectEqual(10, udata.a);
             }
 
@@ -473,7 +473,7 @@ test "State.next" {
                 );
                 try testing.expectEqual(
                     i,
-                    state.toAnyType(z.Integer, -1),
+                    state.toAnyType(-1, z.Integer),
                 );
             }
 
@@ -1334,8 +1334,8 @@ test "TableRef.asMetaTableOf/TableRef.getMetaTable" {
             try recoverCall(z.State.newTable, .{state});
             try recoverCall(z.State.newTable, .{state});
 
-            const tab = state.toAnyType(z.TableRef, -1).?;
-            const mt = state.toAnyType(z.TableRef, -2).?;
+            const tab = state.toAnyType(-1, z.TableRef).?;
+            const mt = state.toAnyType(-2, z.TableRef).?;
             mt.asMetaTableOf(tab.ref.idx);
 
             try testing.expect(
@@ -1356,7 +1356,7 @@ test "TableRef.get/TableRef.set" {
 
             try recoverCall(z.State.newTable, .{state});
 
-            const tab = state.toAnyType(z.TableRef, -1).?;
+            const tab = state.toAnyType(-1, z.TableRef).?;
 
             try recoverCall(z.TableRef.set, .{ tab, "foo", true });
             try testing.expect(tab.get("foo", bool).?);
@@ -1424,12 +1424,12 @@ test "State.dumpValue" {
     var state = try z.State.init(.{});
 
     state.newTable();
-    const tab1 = state.toAnyType(z.TableRef, -1).?;
+    const tab1 = state.toAnyType(-1, z.TableRef).?;
     tab1.set("foo", @as([]const u8, "bar"));
     tab1.set("bar", @as([]const u8, "baz"));
 
     state.newTable();
-    const tab2 = state.toAnyType(z.TableRef, -1).?;
+    const tab2 = state.toAnyType(-1, z.TableRef).?;
     tab2.set("parent", tab1);
     tab1.set("inner", tab2);
 

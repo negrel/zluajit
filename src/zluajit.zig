@@ -437,7 +437,7 @@ pub const State = struct {
     /// Gets a value of type T at position `idx` from Lua stack without popping
     /// it. Values on the stack may be converted to type T (e.g. "1" becomes 1
     /// if T is f64).
-    pub fn toAnyType(self: Self, comptime T: type, idx: c_int) ?T {
+    pub fn toAnyType(self: Self, idx: c_int, comptime T: type) ?T {
         return switch (T) {
             bool => self.toBoolean(idx),
             FunctionRef => FunctionRef.init(ValueRef.init(self, idx)),
@@ -450,29 +450,29 @@ pub const State = struct {
             Value => {
                 return switch (self.valueType(idx) orelse return null) {
                     .thread => .{
-                        .thread = self.toAnyType(State, idx) orelse return null,
+                        .thread = self.toAnyType(idx, State) orelse return null,
                     },
                     .boolean => .{
-                        .boolean = self.toAnyType(bool, idx) orelse return null,
+                        .boolean = self.toAnyType(idx, bool) orelse return null,
                     },
                     .nil => null,
                     .string => .{
-                        .string = self.toAnyType([]const u8, idx) orelse return null,
+                        .string = self.toAnyType(idx, []const u8) orelse return null,
                     },
                     .number => .{
-                        .number = self.toAnyType(f64, idx) orelse return null,
+                        .number = self.toAnyType(idx, f64) orelse return null,
                     },
                     .function => .{
-                        .function = self.toAnyType(FunctionRef, idx) orelse return null,
+                        .function = self.toAnyType(idx, FunctionRef) orelse return null,
                     },
                     .table => .{
-                        .table = self.toAnyType(TableRef, idx) orelse return null,
+                        .table = self.toAnyType(idx, TableRef) orelse return null,
                     },
                     .userdata => .{
-                        .userdata = self.toAnyType(*anyopaque, idx) orelse return null,
+                        .userdata = self.toAnyType(idx, *anyopaque) orelse return null,
                     },
                     .lightuserdata => .{
-                        .lightuserdata = self.toAnyType(*anyopaque, idx) orelse return null,
+                        .lightuserdata = self.toAnyType(idx, *anyopaque) orelse return null,
                     },
                 };
             },
@@ -506,7 +506,7 @@ pub const State = struct {
     /// Pops a value of type T from top of Lua stack. If returned value is null
     /// nothing was popped from the stack.
     pub fn popAnyType(self: Self, comptime T: type) ?T {
-        const v = self.toAnyType(T, -1);
+        const v = self.toAnyType(-1, T);
         if (v != null)
             self.pop(1);
         return v;
@@ -860,11 +860,11 @@ pub const State = struct {
                     narg,
                     "table",
                 );
-                return self.toAnyType(TableRef, narg).?;
+                return self.toAnyType(narg, TableRef).?;
             },
             ValueRef => {
                 self.checkAny(narg);
-                return self.toAnyType(ValueRef, narg).?;
+                return self.toAnyType(narg, ValueRef).?;
             },
             *c.lua_State => {
                 self.checkValueType(narg, .thread);
@@ -872,7 +872,7 @@ pub const State = struct {
             },
             *anyopaque => {
                 self.checkValueType(narg, .lightuserdata);
-                return self.toAnyType(T, narg).?;
+                return self.toAnyType(narg, T).?;
             },
             State => {
                 self.checkValueType(narg, .thread);
@@ -880,7 +880,7 @@ pub const State = struct {
             },
             Value => {
                 self.checkAny(narg);
-                return self.toAnyType(Value, narg);
+                return self.toAnyType(narg, Value);
             },
             else => {
                 switch (@typeInfo(T)) {
@@ -987,7 +987,7 @@ pub const State = struct {
         var idx = i;
         if (idx < 0 and idx > Registry) idx = self.top() + idx + 1;
 
-        const val = self.toAnyType(Value, idx);
+        const val = self.toAnyType(idx, Value);
         if (val == null) {
             print("null", .{});
             return;
@@ -1943,7 +1943,7 @@ pub const TableRef = struct {
     /// event.
     pub fn get(self: Self, k: [*c]const u8, comptime T: type) ?T {
         self.ref.thread.getField(self.ref.idx, k);
-        return self.ref.thread.toAnyType(T, self.ref.idx);
+        return self.ref.thread.toAnyType(self.ref.idx, T);
     }
 
     /// Does equivalent to `setmetatable(t, mt)` where `mt` is this table and
@@ -1957,7 +1957,7 @@ pub const TableRef = struct {
     /// reference to it.
     pub fn getMetaTable(self: Self) ?TableRef {
         if (self.ref.thread.getMetaTable(self.ref.idx)) {
-            return self.ref.thread.toAnyType(TableRef, -1).?;
+            return self.ref.thread.toAnyType(-1, TableRef).?;
         }
 
         return null;
