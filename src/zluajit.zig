@@ -437,6 +437,25 @@ pub const State = struct {
     /// Gets a value of type T at position `idx` from Lua stack without popping
     /// it. Values on the stack may be converted to type T (e.g. "1" becomes 1
     /// if T is f64).
+    ///
+    /// Type mapping between Zig and Lua:
+    /// - bool            <- bool
+    /// - CFunction       <- a native C function
+    /// - f32, f64        <- number, coercible strings
+    /// - Integer         <- number, coercible strings
+    /// - c_int           <- number, coercible strings
+    /// - int             <- number, coercible strings
+    /// - []const u8      <- string, number
+    /// - TableRef        <- table
+    /// - ValueRef        <- any Lua type
+    /// - *c.lua_State    <- thread / coroutine
+    /// - *anyopaque      <- lightuserdata
+    /// - State           <- thread / coroutine
+    /// - Value           <- any Lua type
+    ///
+    /// Special cases:
+    /// - *T              <- userdata of type T
+    /// - enum            <- string containing @tagName(t)
     pub fn toAnyType(self: Self, idx: c_int, comptime T: type) ?T {
         return switch (T) {
             bool => self.toBoolean(idx),
@@ -505,6 +524,25 @@ pub const State = struct {
 
     /// Pops a value of type T from top of Lua stack. If returned value is null
     /// nothing was popped from the stack.
+    ///
+    /// Type mapping between Zig and Lua:
+    /// - bool            <- bool
+    /// - CFunction       <- a native C function
+    /// - f32, f64        <- number, coercible strings
+    /// - Integer         <- number, coercible strings
+    /// - c_int           <- number, coercible strings
+    /// - int             <- number, coercible strings
+    /// - []const u8      <- string, number
+    /// - TableRef        <- table
+    /// - ValueRef        <- any Lua type
+    /// - *c.lua_State    <- thread / coroutine
+    /// - *anyopaque      <- lightuserdata
+    /// - State           <- thread / coroutine
+    /// - Value           <- any Lua type
+    ///
+    /// Special cases:
+    /// - *T              <- userdata of type T
+    /// - enum            <- string containing @tagName(t)
     pub fn popAnyType(self: Self, comptime T: type) ?T {
         const v = self.toAnyType(-1, T);
         if (v != null)
@@ -634,6 +672,30 @@ pub const State = struct {
     /// Pushes value `v` onto Lua stack.
     /// This functions uses appropriate push function at comptime based on type
     /// of `v`.
+    ///
+    /// Type mapping between Zig and Lua:
+    /// - bool            -> bool
+    /// - CFunction       -> function
+    /// - *anyopaque      -> light userdata
+    /// - f32, f64        -> number
+    /// - Integer, iN, uN -> number
+    /// - []const u8      -> string
+    /// - ValueRef        -> copy of referenced value
+    /// - TableRef        -> same as ValueRef
+    /// - FunctionRef     -> same as ValueRef
+    /// - *c.lua_State    -> thread
+    /// - State           -> thread
+    /// - Value           -> depends on Value variant
+    ///
+    /// Special cases:
+    /// - *T              -> pushAnyType(v.*) so *bool is pushed as a boolean
+    /// - ?T              -> nil if T is null and T otherwise
+    /// - enum T          -> @tagName(t) as a string
+    /// - fn              -> converts fn to CFunction using wrapFn()
+    ///
+    /// There is no way to push a new userdata using this function because
+    /// userdata are subject to garbage collection so they must be allocated by
+    /// Lua. See State.newUserData.
     pub fn pushAnyType(self: Self, v: anytype) void {
         self.pushT(@TypeOf(v), v);
     }
@@ -641,7 +703,6 @@ pub const State = struct {
     /// Pushes a value of type T on Lua stack using comptime reflection.
     fn pushT(self: Self, comptime T: type, v: T) void {
         switch (T) {
-            @TypeOf(null) => self.pushNil(),
             bool => return c.lua_pushboolean(self.lua, @intFromBool(v)),
             CFunction => return self.pushCFunction(v),
             *anyopaque => return self.pushLightUserData(v),
@@ -840,7 +901,28 @@ pub const State = struct {
         return self.checkUserDataWithName(narg, tName(T), T);
     }
 
-    /// Checks whether the argument `narg` is of type T and returns it.
+    /// Checks whether the argument `narg` is of type T or coercible and returns
+    /// it.
+    ///
+    /// Type mapping between Zig and Lua:
+    /// - bool            <- bool
+    /// - CFunction       <- a native C function
+    /// - f32, f64        <- number, coercible strings
+    /// - Integer         <- number, coercible strings
+    /// - c_int           <- number, coercible strings
+    /// - int             <- number, coercible strings
+    /// - []const u8      <- string, number
+    /// - TableRef        <- table
+    /// - ValueRef        <- any Lua type
+    /// - *c.lua_State    <- thread / coroutine
+    /// - *anyopaque      <- lightuserdata
+    /// - State           <- thread / coroutine
+    /// - Value           <- any Lua type
+    ///
+    /// Special cases:
+    /// - *T              <- userdata of type T
+    /// - enum            <- string containing @tagName(t)
+    /// - ?T              <- nil if T is null and T otherwise
     pub fn checkAnyType(self: Self, narg: c_int, comptime T: type) T {
         switch (T) {
             bool => return self.isBoolean(narg) or self.typeError(narg, "boolean"),
