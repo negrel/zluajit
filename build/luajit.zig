@@ -15,8 +15,6 @@ pub fn configure(
     shared: bool,
     lua52_compat: bool,
 ) *Step.Compile {
-    // TODO: extract this to the main build function because it is shared between all specialized build functions
-
     const lib = b.createModule(.{
         .target = target,
         .optimize = optimize,
