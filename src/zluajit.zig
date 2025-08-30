@@ -12,7 +12,7 @@ pub const c = @import("./c.zig");
 pub const State = struct {
     const Self = @This();
 
-    /// Thread status.
+    /// State status.
     pub const Status = enum(c_int) {
         ok = 0,
         yield = c.LUA_YIELD,
@@ -363,7 +363,7 @@ pub const State = struct {
     /// The Lua value must be a string or a number; otherwise, the function
     /// returns null. If the value is a number, then toString also changes the
     /// actual value in the stack to a string. (This change confuses
-    /// Thread.next when toString is applied to keys during a table
+    /// State.next when toString is applied to keys during a table
     /// traversal.)
     ///
     /// toString returns a fully aligned pointer to a string inside the Lua
@@ -405,7 +405,7 @@ pub const State = struct {
     /// This value must be a thread; otherwise, the function returns null.
     ///
     /// This is the same as lua_tothread.
-    pub fn toThread(self: Self, idx: c_int) ?State {
+    pub fn toState(self: Self, idx: c_int) ?State {
         const lua = c.lua_tothread(self.lua, idx) orelse return null;
         return State.initFromCPointer(lua);
     }
@@ -465,7 +465,7 @@ pub const State = struct {
             []const u8 => self.toString(idx),
             TableRef => TableRef.init(ValueRef.init(self, idx)),
             *c.lua_State => c.lua_tothread(self.lua, idx),
-            State => self.toThread(idx),
+            State => self.toState(idx),
             Value => {
                 return switch (self.valueType(idx) orelse return null) {
                     .thread => .{
@@ -665,7 +665,7 @@ pub const State = struct {
     /// thread is the main thread of its state.
     ///
     /// This is the same as lua_pushthread.
-    pub fn pushThread(self: Self) bool {
+    pub fn pushState(self: Self) bool {
         return c.lua_pushthread(self.lua) != 0;
     }
 
@@ -713,7 +713,7 @@ pub const State = struct {
             ValueRef => return self.pushValue(v.idx),
             *c.lua_State => return self.pushAnyType(State.initFromCPointer(v)),
             State => {
-                _ = v.pushThread();
+                _ = v.pushState();
                 if (v.lua != self.lua) v.xMove(self, 1);
                 return;
             },
@@ -790,7 +790,7 @@ pub const State = struct {
 
     /// Checks whether the function argument `narg` is a string and returns this
     /// string
-    /// This function uses Thread.toString to get its result, so all conversions
+    /// This function uses State.toString to get its result, so all conversions
     /// and caveats of that function apply here.
     ///
     /// This is the same as luaL_checkstring.
@@ -875,7 +875,7 @@ pub const State = struct {
     }
 
     /// Checks whether the function argument narg is a userdata of the type
-    /// `tname` (see Thread.newMetaTable).
+    /// `tname` (see State.newMetaTable).
     ///
     /// See State.checkUserData for a more Zig friendly version.
     ///
@@ -890,7 +890,7 @@ pub const State = struct {
     }
 
     /// Checks whether the function argument narg is a userdata of type T
-    /// (see Thread.newMetaTable).
+    /// (see State.newMetaTable).
     ///
     /// This is similar to luaL_checkudata.
     pub fn checkUserData(
@@ -950,7 +950,7 @@ pub const State = struct {
             },
             *c.lua_State => {
                 self.checkValueType(narg, .thread);
-                return self.toThread(narg).?.lua;
+                return self.toState(narg).?.lua;
             },
             *anyopaque => {
                 self.checkValueType(narg, .lightuserdata);
@@ -958,7 +958,7 @@ pub const State = struct {
             },
             State => {
                 self.checkValueType(narg, .thread);
-                return self.toThread(narg).?;
+                return self.toState(narg).?;
             },
             Value => {
                 self.checkAny(narg);
@@ -1000,7 +1000,7 @@ pub const State = struct {
     /// If the function argument arg is a string, returns this string. If this
     /// argument is absent or is nil, returns `def`. Otherwise, raises an error.
     ///
-    /// This function uses Thread.toString to get its result, so all
+    /// This function uses State.toString to get its result, so all
     /// conversions and caveats of that function apply here.
     ///
     /// This is the same as luaL_optlstring.
@@ -1022,7 +1022,7 @@ pub const State = struct {
     /// ```
     ///     location: bad argument narg to 'func' (tname expected, got rt)
     /// ```
-    /// where location is produced by Thread.where, func is the name of the
+    /// where location is produced by State.where, func is the name of the
     /// current function, and `rt` is the type name of the actual argument.
     pub fn typeError(self: Self, narg: c_int, tname: [*c]const u8) noreturn {
         _ = c.luaL_typerror(self.lua, narg, tname);
@@ -1436,7 +1436,7 @@ pub const State = struct {
     /// chunk in the zero-terminated string s.
     /// This function returns the same results as lua_load.
     ///
-    /// Also as Thread.load, this function only loads the chunk; it does not run
+    /// Also as State.load, this function only loads the chunk; it does not run
     /// it.
     ///
     /// This is the same as luaL_loadbuffer.
@@ -1452,7 +1452,7 @@ pub const State = struct {
     /// This function returns the same results as lua_load, but it has an extra
     /// error code LUA_ERRFILE if it cannot open/read the file.
     ///
-    /// As Thread.load, this function only loads the chunk; it does not run it.
+    /// As State.load, this function only loads the chunk; it does not run it.
     ///
     /// This is the same as luaL_loadfile.
     pub fn loadFile(self: Self, filename: [*c]const u8) LoadFileError!void {
@@ -2063,9 +2063,9 @@ pub const FunctionRef = struct {
 /// following protocol, which defines the way parameters and results are passed:
 /// a C function receives its arguments from Lua in its stack in direct order
 /// (the first argument is pushed first). So, when the function starts,
-/// Thread.top() returns the number of arguments received by the function. The
+/// State.top() returns the number of arguments received by the function. The
 /// first argument (if any) is at index 1 and its last argument is at index
-/// Thread.top(). To return values to Lua, a C function just pushes them onto
+/// State.top(). To return values to Lua, a C function just pushes them onto
 /// the stack, in direct order (the first result is pushed first), and returns
 /// the number of results. Any other value in the stack below the results will
 /// be properly discarded by Lua. Like a Lua function, a C function called by
@@ -2077,8 +2077,8 @@ pub const CFunction = *const fn (?*c.lua_State) callconv(.c) c_int;
 /// See CFunction for more details.
 pub const ZFunction = *const fn (State) c_int;
 
-/// The reader function used by Thread.load. Every time it needs another piece
-/// of the chunk, Thread.load calls the reader, passing along its data
+/// The reader function used by State.load. Every time it needs another piece
+/// of the chunk, State.load calls the reader, passing along its data
 /// parameter.
 /// The reader must return a pointer to a block of memory with a new piece of
 /// the chunk and set size to the block size. The block must exist until the
@@ -2094,10 +2094,10 @@ pub const Reader = *const fn (
 /// The type of the writer function used by lua_dump. Every time it produces
 /// another piece of chunk, lua_dump calls the writer, passing along the buffer
 /// to be written (p), its size (sz), and the data parameter supplied to
-/// Thread.dump.
+/// State.dump.
 //
 /// The writer returns an error code: 0 means no errors; any other value means
-/// an error and stops Thread.dump from calling the writer again.
+/// an error and stops State.dump from calling the writer again.
 pub const Writer = *const fn (
     ?*c.lua_State,
     ?*const anyopaque,
