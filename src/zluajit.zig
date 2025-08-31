@@ -1043,15 +1043,22 @@ pub const State = struct {
 
     /// Dumps Lua stack using std.debug.print.
     pub fn dumpStack(self: Self) void {
-        const print = std.debug.print;
-
         var map = std.AutoHashMap(usize, void).init(std.heap.c_allocator);
         defer map.deinit();
 
+        self.dumpNestedStack(&map, 0);
+    }
+
+    fn dumpNestedStack(self: Self, visited: *std.AutoHashMap(usize, void), depth: usize) void {
+        const print = std.debug.print;
+
+        // Padding.
+        for (0..depth) |_| print("  ", .{});
         print("lua stack size {}\n", .{self.top()});
         for (1..@as(usize, @intCast(self.top())) + 1) |i| {
+            for (0..depth) |_| print("  ", .{});
             print("  [{}] ", .{i});
-            self.dumpNestedValue(@intCast(i), &map, 1);
+            self.dumpNestedValue(@intCast(i), visited, depth);
             print("\n", .{});
         }
     }
@@ -1122,7 +1129,17 @@ pub const State = struct {
                 for (0..depth) |_| print("  ", .{});
                 print("{s}", .{"}"});
             },
-            .thread => print("thread@{x}", .{ptr}),
+            .thread => |thread| {
+                if (visited.get(ptr)) |_| {
+                    print("thread@{x}", .{ptr});
+                    return;
+                }
+
+                visited.put(ptr, {}) catch @panic("OOM");
+
+                print("thread@{x}\n", .{ptr});
+                thread.dumpNestedStack(visited, depth + 1);
+            },
             .userdata => print("userdata@{x}", .{ptr}),
         }
     }

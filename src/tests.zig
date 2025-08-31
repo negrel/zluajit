@@ -912,7 +912,7 @@ test "State.toXXX" {
             try testing.expect(state.toBoolean(z.Global));
             try testing.expect(state.toCFunction(z.Global) == null);
             try testing.expect(state.toNumber(z.Global) == 0);
-            try testing.expect(state.toThread(z.Global) == null);
+            try testing.expect(state.toState(z.Global) == null);
             try testing.expect(state.toUserData(z.Global, anyopaque) == null);
             try testing.expect(state.toPointer(z.Global) != null);
             try testing.expect(state.toString(z.Global) == null);
@@ -1421,17 +1421,18 @@ test "State.refValue/State.unref" {
 }
 
 test "State.dumpValue" {
-    var state = try z.State.init(.{});
+    const state = try z.State.init(.{});
 
-    state.newTable();
-    const tab1 = state.toAnyType(-1, z.TableRef).?;
+    const thread = try recoverCall(z.State.newThread, .{state});
+    thread.newTable();
+    const tab1 = thread.toAnyType(-1, z.TableRef).?;
     tab1.set("foo", @as([]const u8, "bar"));
     tab1.set("bar", @as([]const u8, "baz"));
 
-    state.newTable();
-    const tab2 = state.toAnyType(-1, z.TableRef).?;
+    thread.newTable();
+    const tab2 = thread.toAnyType(-1, z.TableRef).?;
     tab2.set("parent", tab1);
     tab1.set("inner", tab2);
 
-    // state.dumpValue(tab1.ref.idx);
+    // state.dumpValue(-1);
 }
