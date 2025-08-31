@@ -1670,10 +1670,10 @@ pub const State = struct {
     /// null, Lua stores in *ud the opaque pointer passed to State.init.
     ///
     /// This is the same as lua_getallocf.
-    pub fn allocator(self: Self) ?*std.mem.Allocator {
+    pub fn allocator(self: Self) *std.mem.Allocator {
         var ud: ?*std.mem.Allocator = null;
         _ = c.lua_getallocf(self.lua, @ptrCast(@alignCast(&ud)));
-        return ud;
+        return ud.?;
     }
 
     /// Changes the allocator of a given state to f with user data ud.
