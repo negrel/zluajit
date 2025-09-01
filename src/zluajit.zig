@@ -299,6 +299,27 @@ pub const State = struct {
         return c.lua_islightuserdata(self.lua, idx);
     }
 
+    /// This function works like State.checkUserDataWithName, except that,
+    /// when the test fails, it returns NULL instead of throwing an error.
+    ///
+    /// This is the same as luaL_testudata.
+    pub fn testUserDataWithName(
+        self: Self,
+        idx: c_int,
+        tname: [*:0]const u8,
+        comptime T: type,
+    ) ?*T {
+        return @ptrCast(@alignCast(c.luaL_testudata(self.lua, idx, tname)));
+    }
+
+    /// This function works like State.checkUserData, except that,
+    /// when the test fails, it returns NULL instead of throwing an error.
+    ///
+    /// This is similar to luaL_testudata.
+    pub fn testUserData(self: Self, idx: c_int, comptime T: type) ?*T {
+        return self.testUserDataWithName(idx, tName(T), T);
+    }
+
     /// Returns true if the two values in acceptable indices `index1` and
     /// `index2` are equal, following the semantics of the Lua == operator
     /// (that is, may call metamethods). Otherwise returns false. Also returns

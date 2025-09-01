@@ -1285,6 +1285,45 @@ test "State.checkEnum" {
     }.testCase);
 }
 
+test "State.testUserData" {
+    try withProgressiveAllocator(struct {
+        fn testCase(alloc: *std.mem.Allocator) anyerror!void {
+            var state = try z.State.init(.{
+                .allocator = alloc,
+                .panicHandler = recoverableLuaPanic,
+            });
+            defer state.deinit();
+
+            const UserData = struct {
+                pub const zluajitTName = "MyUserData";
+
+                a: i32,
+            };
+
+            const funcs = struct {
+                fn newUserData(th: z.State) *UserData {
+                    const ud = th.newUserData(UserData);
+                    _ = th.newMetaTable(UserData);
+                    ud.a = 123;
+                    return ud;
+                }
+
+                fn testUserData(th: z.State) !?*UserData {
+                    try testing.expect(
+                        th.testUserDataWithName(-1, UserData.zluajitTName, anyopaque) != null,
+                    );
+                    return th.testUserData(-1, UserData);
+                }
+            };
+
+            _ = try recoverCall(funcs.newUserData, .{state});
+            state.setMetaTable(-2);
+            const ud = try recoverCall(funcs.testUserData, .{state});
+            try testing.expectEqual(123, ud.?.a);
+        }
+    }.testCase);
+}
+
 test "State.checkUserData" {
     try withProgressiveAllocator(struct {
         fn testCase(alloc: *std.mem.Allocator) anyerror!void {
