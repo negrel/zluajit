@@ -1996,23 +1996,23 @@ pub const Value = union(ValueType) {
 pub const ValueRef = struct {
     const Self = @This();
 
-    thread: State,
+    L: State,
     idx: c_int,
 
     /// Initializes a new reference of value at index `idx` on stack of
     /// `thread`. If `idx` is a relative index, it is converted to an absolute
     /// index.
-    pub fn init(thread: State, idx: c_int) Self {
+    pub fn init(L: State, idx: c_int) Self {
         return .{
-            .thread = thread,
-            .idx = if (idx < 0 and idx > Registry) thread.top() + idx + 1 else idx,
+            .L = L,
+            .idx = if (idx < 0 and idx > Registry) L.top() + idx + 1 else idx,
         };
     }
 
     /// Returns the type of the value referenced or null for
     /// a non-valid (but acceptable) reference.
     pub fn valueType(self: Self) ?ValueType {
-        return self.thread.valueType(self.idx);
+        return self.L.valueType(self.idx);
     }
 
     /// Returns a TableRef, a specialized reference for table values. If
@@ -2033,7 +2033,7 @@ pub const ValueRef = struct {
     ///
     /// Typically this function is used only for debug information.
     pub fn toPointer(self: Self) ?*const anyopaque {
-        return self.thread.toPointer(self.idx);
+        return self.L.toPointer(self.idx);
     }
 };
 
@@ -2067,31 +2067,31 @@ pub const TableRef = struct {
     /// Does the equivalent to `t[k] = v`.
     /// As in Lua, this function may trigger a metamethod for the "newindex"
     /// event.
-    pub fn set(self: Self, k: [*c]const u8, v: anytype) void {
-        self.ref.thread.pushAnyType(v);
-        self.ref.thread.setField(self.ref.idx, k);
+    pub fn setField(self: Self, k: [*c]const u8, v: anytype) void {
+        self.ref.L.pushAnyType(v);
+        self.ref.L.setField(self.ref.idx, k);
     }
 
     /// Pushes onto the stack the value `t[k]` and returns a reference to it.
     /// As in Lua, this function may trigger a metamethod for the "index"
     /// event.
-    pub fn get(self: Self, k: [*c]const u8, comptime T: type) ?T {
-        self.ref.thread.getField(self.ref.idx, k);
-        return self.ref.thread.toAnyType(self.ref.idx, T);
+    pub fn getField(self: Self, k: [*c]const u8, comptime T: type) ?T {
+        self.ref.L.getField(self.ref.idx, k);
+        return self.ref.L.toAnyType(self.ref.idx, T);
     }
 
     /// Does equivalent to `setmetatable(t, mt)` where `mt` is this table and
     /// `t` is table / userdata at index `idx`.
     pub fn asMetaTableOf(self: Self, idx: c_int) void {
-        self.ref.thread.pushValue(self.ref.idx);
-        self.ref.thread.setMetaTable(idx);
+        self.ref.L.pushValue(self.ref.idx);
+        self.ref.L.setMetaTable(idx);
     }
 
     /// Pushes metatable associated to this table onto the stack and returns a
     /// reference to it.
     pub fn getMetaTable(self: Self) ?TableRef {
-        if (self.ref.thread.getMetaTable(self.ref.idx)) {
-            return self.ref.thread.toAnyType(-1, TableRef).?;
+        if (self.ref.L.getMetaTable(self.ref.idx)) {
+            return self.ref.L.toAnyType(-1, TableRef).?;
         }
 
         return null;
