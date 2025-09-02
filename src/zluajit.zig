@@ -2072,12 +2072,30 @@ pub const TableRef = struct {
         self.ref.L.setField(self.ref.idx, k);
     }
 
+    /// Does the equivalent to `t[k] = v`.
+    /// As in Lua, this function may trigger a metamethod for the "newindex"
+    /// event.
+    pub fn set(self: Self, k: anytype, v: anytype) void {
+        self.ref.L.pushAnyType(k);
+        self.ref.L.pushAnyType(v);
+        self.ref.L.setTable(self.ref.idx);
+    }
+
     /// Pushes onto the stack the value `t[k]` and returns a reference to it.
     /// As in Lua, this function may trigger a metamethod for the "index"
     /// event.
     pub fn getField(self: Self, k: [*c]const u8, comptime T: type) ?T {
         self.ref.L.getField(self.ref.idx, k);
         return self.ref.L.toAnyType(self.ref.idx, T);
+    }
+
+    /// Pushes onto the stack the value `t[k]` and returns it.
+    /// As in Lua, this function may trigger a metamethod for the "index"
+    /// event.
+    pub fn get(self: Self, k: anytype, comptime T: type) ?T {
+        self.ref.L.pushAnyType(k);
+        self.ref.L.getTable(self.ref.idx);
+        return self.ref.L.toAnyType(-1, T);
     }
 
     /// Does equivalent to `setmetatable(t, mt)` where `mt` is this table and

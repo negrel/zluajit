@@ -1384,6 +1384,25 @@ test "TableRef.asMetaTableOf/TableRef.getMetaTable" {
     }.testCase);
 }
 
+test "TableRef.getField/TableRef.setField" {
+    try withProgressiveAllocator(struct {
+        fn testCase(alloc: *std.mem.Allocator) anyerror!void {
+            var state = try z.State.init(.{
+                .allocator = alloc,
+                .panicHandler = recoverableLuaPanic,
+            });
+            defer state.deinit();
+
+            try recoverCall(z.State.newTable, .{state});
+
+            const tab = state.toAnyType(-1, z.TableRef).?;
+
+            try recoverCall(z.TableRef.setField, .{ tab, "foo", true });
+            try testing.expect(tab.getField("foo", bool).?);
+        }
+    }.testCase);
+}
+
 test "TableRef.get/TableRef.set" {
     try withProgressiveAllocator(struct {
         fn testCase(alloc: *std.mem.Allocator) anyerror!void {
@@ -1397,8 +1416,8 @@ test "TableRef.get/TableRef.set" {
 
             const tab = state.toAnyType(-1, z.TableRef).?;
 
-            try recoverCall(z.TableRef.set, .{ tab, "foo", true });
-            try testing.expect(tab.get("foo", bool).?);
+            try recoverCall(z.TableRef.set, .{ tab, state, true });
+            try testing.expect(tab.get(state, bool).?);
         }
     }.testCase);
 }
@@ -1465,13 +1484,13 @@ test "State.dumpValue" {
     const thread = try recoverCall(z.State.newThread, .{state});
     thread.newTable();
     const tab1 = thread.toAnyType(-1, z.TableRef).?;
-    tab1.set("foo", @as([]const u8, "bar"));
-    tab1.set("bar", @as([]const u8, "baz"));
+    tab1.setField("foo", @as([]const u8, "bar"));
+    tab1.setField("bar", @as([]const u8, "baz"));
 
     thread.newTable();
     const tab2 = thread.toAnyType(-1, z.TableRef).?;
-    tab2.set("parent", tab1);
-    tab1.set("inner", tab2);
+    tab2.setField("parent", tab1);
+    tab1.setField("inner", tab2);
 
     // state.dumpValue(-1);
 }
