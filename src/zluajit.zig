@@ -1244,6 +1244,15 @@ pub const State = struct {
         c.lua_newtable(self.lua);
     }
 
+    /// Creates a new empty table, pushes it onto the stack and return a
+    /// TableRef.
+    ///
+    /// This is similar to lua_newtable.
+    pub fn newTableRef(self: Self) TableRef {
+        self.newTable();
+        return TableRef.init(ValueRef.init(self, -1));
+    }
+
     /// This function allocates a new block of memory for type T, pushes onto
     /// the stack a new full userdata with the block address, and returns this
     /// address.
@@ -1820,6 +1829,21 @@ pub const State = struct {
     /// ```
     pub fn newMetaTable(self: Self, comptime T: type) bool {
         return self.newMetaTableWithName(tName(T));
+    }
+
+    /// If the registry already has a table for tname of T, returns null.
+    /// Otherwise, creates a new table to be used as a metatable for userdata,
+    /// adds it to the registry, and returns a TableRef.
+    ///
+    /// In both cases pushes onto the stack the final value associated with
+    /// T in the registry.
+    ///
+    /// This is similar to State.newMetaTable.
+    pub fn newMetaTableRef(self: Self, comptime T: type) ?TableRef {
+        if (self.newMetaTable(T)) {
+            return self.toAnyType(-1, TableRef);
+        }
+        return null;
     }
 
     /// Creates and returns a reference, in the table at index `t`, for the
