@@ -2141,7 +2141,7 @@ pub const TableRef = struct {
 };
 
 /// FunctionRef is a reference to a function on the stack of a state.
-/// state must outlive TableRef and stack position must remain stable.
+/// state must outlive FunctionRef and stack position must remain stable.
 pub const FunctionRef = struct {
     const Self = @This();
 
@@ -2150,6 +2150,8 @@ pub const FunctionRef = struct {
     pub fn init(ref: ValueRef) Self {
         return .{ .ref = ref };
     }
+
+    // TODO: add call, pCall helpers.
 };
 
 /// Type for C functions.
