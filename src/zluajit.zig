@@ -1870,6 +1870,20 @@ pub const State = struct {
     pub fn unref(self: Self, t: c_int, r: c_int) void {
         c.luaL_unref(self.lua, t, r);
     }
+
+    /// Creates and pushes a traceback of the stack `L1`. If msg is not null
+    /// it is appended at the beginning of the traceback. The level parameter
+    /// tells at which level to start the traceback.
+    ///
+    /// This is the same as luaL_traceback.
+    pub fn traceBack(
+        self: Self,
+        L1: Self,
+        msg: [*c]const u8,
+        level: c_int,
+    ) void {
+        c.luaL_traceback(self.lua, L1.lua, msg, level);
+    }
 };
 
 /// RefError defines possible error returned by State.ref.
