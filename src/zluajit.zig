@@ -729,7 +729,7 @@ pub const State = struct {
             *anyopaque => return self.pushLightUserData(v),
             f32, f64 => return self.pushNumber(v),
             Integer => return self.pushInteger(v),
-            []const u8 => return self.pushString(v),
+            []const u8, [:0]const u8 => return self.pushString(v),
             TableRef, FunctionRef => return self.pushAnyType(v.ref),
             ValueRef => return self.pushValue(v.idx),
             *c.lua_State => return self.pushAnyType(State.initFromCPointer(v)),
@@ -756,6 +756,11 @@ pub const State = struct {
                             .one => return self.pushT(info.child, v.*),
                             else => @compileError("pointer type of size " ++ @tagName(info.size) ++ " is not supported (" ++ @typeName(T) ++ ")"),
                         };
+                    },
+                    .array => |info| {
+                        if (info.child == u8) {
+                            return self.pushString(v[0..]);
+                        }
                     },
                     .optional => |info| {
                         if (v == null) {

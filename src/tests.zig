@@ -276,6 +276,10 @@ test "State.pushAnyType/Thread.popAnyType/Thread.valueType" {
                 try recoverCall(z.State.pushAnyType, .{
                     state, @as([]const u8, "foo bar baz"),
                 });
+                try recoverCall(z.State.pushAnyType, .{
+                    state, @as([:0]const u8, "foo bar baz"),
+                });
+                try recoverCall(z.State.pushAnyType, .{ state, "foo bar baz" });
                 try testing.expectEqual(state.valueType(-1), .string);
                 try testing.expectEqualStrings(
                     "foo bar baz",
