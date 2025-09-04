@@ -253,6 +253,23 @@ pub fn configure(
     library.installHeader(upstream.path("src/luaconf.h"), "luaconf.h");
     library.installHeader(luajit_h, "luajit.h");
 
+    {
+        const exe = b.addExecutable(.{
+            .target = target,
+            .optimize = optimize,
+            .name = "luajit",
+        });
+        exe.addCSourceFile(.{ .file = upstream.path("src/luajit.c") });
+        exe.addIncludePath(luajit_h.dirname());
+        exe.linkLibC();
+        exe.linkLibrary(library);
+        exe.step.dependOn(&library.step);
+        const install_exe = b.addInstallArtifact(exe, .{});
+
+        const step = b.step("luajit", "Build LuaJIT standalone binary");
+        step.dependOn(&install_exe.step);
+    }
+
     return library;
 }
 
