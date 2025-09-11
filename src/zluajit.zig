@@ -1900,6 +1900,21 @@ pub const State = struct {
         c.luaL_unref(self.lua, t, r);
     }
 
+    /// Returns global table as a TableRef.
+    pub fn globalRef(self: Self) TableRef {
+        return TableRef.init(ValueRef.init(self, Global));
+    }
+
+    /// Returns registry table as a TableRef.
+    pub fn registryRef(self: Self) TableRef {
+        return TableRef.init(ValueRef.init(self, Registry));
+    }
+
+    /// Returns environment table as a TableRef.
+    pub fn environmentRef(self: Self) TableRef {
+        return TableRef.init(ValueRef.init(self, Environment));
+    }
+
     /// Creates and pushes a traceback of the stack `L1`. If msg is not null
     /// it is appended at the beginning of the traceback. The level parameter
     /// tells at which level to start the traceback.
