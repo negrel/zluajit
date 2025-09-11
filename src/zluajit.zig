@@ -1083,7 +1083,7 @@ pub const State = struct {
         print("lua stack size {}\n", .{self.top()});
         for (1..@as(usize, @intCast(self.top())) + 1) |i| {
             for (0..depth) |_| print("  ", .{});
-            print("  [{}] ", .{i});
+            print("  [{d}] ", .{i});
             self.dumpNestedValue(@intCast(i), visited, depth);
             print("\n", .{});
         }
@@ -1116,7 +1116,7 @@ pub const State = struct {
             .function => print("function@{x}", .{ptr}),
             .lightuserdata => print("lightuserdata@{x}", .{ptr}),
             .nil => print("nil", .{}),
-            .number => |n| print("{}", .{n}),
+            .number => |n| print("{d}", .{n}),
             .string => |s| print("'{s}'", .{s}),
             .table => {
                 if (visited.get(ptr)) |_| {
