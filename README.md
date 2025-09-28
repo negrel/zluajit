@@ -8,6 +8,9 @@ bindings to LuaJIT 5.1/5.2 C API.
 See [`examples`](./examples/README.md) to get started embedding LuaJIT in Zig
 program or build Zig modules that can be imported from Lua.
 
+It is strongly recommended to build programs depending on `zluajit` using the
+LLVM backend (at least for now).
+
 ## Building `luajit`
 
 You can build `luajit` executable using `zig build luajit`.
