@@ -37,8 +37,8 @@
     // internet connectivity.
     .dependencies = .{
         .zluajit = .{
-            .url = "git+https://github.com/negrel/zluajit#abf71c9110dd333d93b6fd4293d58b0135f864cd",
-            .hash = "zluajit-0.0.0-uJQ3fvRmAgBLtyHvtxJzJCEcN0FHdt08xJLfnPCcxlsY",
+            .url = "git+https://github.com/negrel/zluajit#896c6fdd8f1fc1adf85e7a7ed73fe97a096a595d",
+            .hash = "zluajit-0.0.0-uJQ3fgCCAgDHdKfngJl05fitLDl7pogEmX1_iO1xi7y-",
         },
     },
     .paths = .{

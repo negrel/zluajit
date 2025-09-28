@@ -11,6 +11,7 @@ pub fn build(b: *std.Build) void {
     const zluajit = b.dependency("zluajit", .{
         .target = target,
         .optimize = optimize,
+        .llvm = true, // Recommended.
     });
 
     const lib_mod = b.createModule(.{
@@ -27,6 +28,7 @@ pub fn build(b: *std.Build) void {
         .linkage = .dynamic,
         .name = "module",
         .root_module = lib_mod,
+        .use_llvm = true,
     });
     b.installArtifact(lib);
 }

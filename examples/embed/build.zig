@@ -10,6 +10,7 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
         .shared = false, // Build LuaJIT as a static library.
         .@"lua52-compat" = true, // Enable Lua 5.2 compatibility.
+        .llvm = true, // Recommended.
     });
 
     const exe_mod = b.createModule(.{
