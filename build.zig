@@ -7,6 +7,7 @@ pub fn build(b: *std.Build) void {
     const optimize = b.standardOptimizeOption(.{});
     const shared = b.option(bool, "shared", "Build shared library instead of static") orelse false;
     const lua52_compat = b.option(bool, "lua52-compat", "Enable Lua 5.2 compatibility layer") orelse false;
+    const llvm = b.option(bool, "llvm", "Use LLVM backend") orelse false;
 
     const luajitLib = luajit.configure(
         b,
@@ -15,6 +16,7 @@ pub fn build(b: *std.Build) void {
         b.dependency("luajit", .{}),
         shared,
         lua52_compat,
+        llvm,
     );
 
     const module = b.addModule("zluajit", .{
@@ -25,9 +27,11 @@ pub fn build(b: *std.Build) void {
         .unwind_tables = .sync,
     });
 
-    const lib = b.addStaticLibrary(.{
+    const lib = b.addLibrary(.{
         .name = "zluajit",
         .root_module = module,
+        .linkage = .static,
+        .use_llvm = llvm,
     });
     lib.linkLibrary(luajitLib);
 
@@ -51,7 +55,9 @@ pub fn build(b: *std.Build) void {
             .root_source_file = b.path("src/tests.zig"),
             .target = target,
             .optimize = optimize,
+            .unwind_tables = .sync,
         }),
+        .use_llvm = llvm,
     });
     lib_unit_tests.root_module.addImport("zluajit", module);
     const install_lib_unit_tests = b.addInstallArtifact(lib_unit_tests, .{});

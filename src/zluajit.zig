@@ -6,7 +6,9 @@
 const std = @import("std");
 const builtin = @import("builtin");
 
-pub const c = @import("./c.zig");
+pub const c = @import("./c.zig").c;
+
+const zig0_15 = builtin.zig_version.major == 0 and builtin.zig_version.minor == 15;
 
 /// State defines an ergonomic Zig wrapper around C Lua state.
 pub const State = struct {
@@ -20,7 +22,7 @@ pub const State = struct {
 
     pub const Options = struct {
         /// Allocator used by Lua runtime. Pointer must outlive state.
-        allocator: *const std.mem.Allocator = &std.heap.c_allocator,
+        allocator: *std.mem.Allocator = @constCast(&std.heap.c_allocator),
         /// Panic handler used by Lua runtime.
         panicHandler: ?CFunction = luaPanic,
     };
@@ -2238,7 +2240,7 @@ fn luaAlloc(
     } else {
         const slice = alloc.alignedAlloc(
             u8,
-            @sizeOf(std.c.max_align_t),
+            if (zig0_15) std.mem.Alignment.fromByteUnits(@sizeOf(std.c.max_align_t)) else @sizeOf(std.c.max_align_t),
             nsize,
         ) catch return null;
         return slice.ptr;

@@ -14,6 +14,7 @@ pub fn configure(
     upstream: *Build.Dependency,
     shared: bool,
     lua52_compat: bool,
+    llvm: bool,
 ) *Step.Compile {
     const lib = b.createModule(.{
         .target = target,
@@ -24,6 +25,7 @@ pub fn configure(
         .name = "lua",
         .root_module = lib,
         .linkage = if (shared) .dynamic else .static,
+        .use_llvm = llvm,
     });
 
     // Compile minilua interpreter used at build time to generate files
@@ -255,9 +257,11 @@ pub fn configure(
 
     {
         const exe = b.addExecutable(.{
-            .target = target,
-            .optimize = optimize,
             .name = "luajit",
+            .root_module = b.createModule(.{
+                .target = target,
+                .optimize = optimize,
+            }),
         });
         exe.addCSourceFile(.{ .file = upstream.path("src/luajit.c") });
         exe.addIncludePath(luajit_h.dirname());

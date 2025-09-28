@@ -324,13 +324,14 @@ test "State.pushAnyType/Thread.popAnyType/Thread.valueType" {
 
             // Light userdata.
             {
-                const pi: *anyopaque = @ptrCast(@constCast(&std.math.pi));
-                try recoverCall(z.State.pushAnyType, .{ state, pi });
+                const pi: f64 = std.math.pi;
+                const piPtr: *anyopaque = @ptrCast(@constCast(&pi));
+                try recoverCall(z.State.pushAnyType, .{ state, piPtr });
                 try testing.expectEqual(
                     state.valueType(-1),
                     .lightuserdata,
                 );
-                try testing.expectEqual(pi, state.popAnyType(*anyopaque).?);
+                try testing.expectEqual(piPtr, state.popAnyType(*anyopaque).?);
             }
 
             // User data.
