@@ -1074,6 +1074,7 @@ pub const State = struct {
         var map = std.AutoHashMap(usize, void).init(std.heap.c_allocator);
         defer map.deinit();
 
+        map.put(@intFromPtr(self.lua), {}) catch @panic("OOM");
         self.dumpNestedStack(&map, 0);
     }
 
@@ -1159,7 +1160,9 @@ pub const State = struct {
             },
             .thread => |thread| {
                 if (visited.get(ptr)) |_| {
-                    print("thread@{x}", .{ptr});
+                    if (ptr == @intFromPtr(self.lua)) {
+                        print("thread@{x} (current)", .{ptr});
+                    } else print("thread@{x}", .{ptr});
                     return;
                 }
 
@@ -2160,6 +2163,16 @@ pub const TableRef = struct {
 
         return null;
     }
+
+    /// Retrieves length of table sequence.
+    pub fn length(self: Self) usize {
+        return self.ref.L.objLen(self.ref.idx);
+    }
+
+    /// Appends value v at end of table.
+    pub fn append(self: Self, v: anytype) void {
+        self.set(@as(c_int, @intCast(self.length())), v);
+    }
 };
 
 /// FunctionRef is a reference to a function on the stack of a state.
@@ -2332,3 +2345,6 @@ pub fn tName(comptime T: type) [*:0]const u8 {
     if (@hasDecl(T, tnameField)) return @field(T, tnameField);
     return @typeName(T);
 }
+
+/// Lua nil value.
+pub const nil = Value.nil;
