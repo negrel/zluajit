@@ -1086,7 +1086,7 @@ pub const State = struct {
         for (1..@as(usize, @intCast(self.top())) + 1) |i| {
             for (0..depth) |_| print("  ", .{});
             print("  [{d}] ", .{i});
-            self.dumpNestedValue(@intCast(i), visited, depth);
+            self.dumpNestedValue(@intCast(i), visited, depth + 1);
             print("\n", .{});
         }
     }
@@ -1503,8 +1503,8 @@ pub const State = struct {
     /// from the standard input. The first line in the file is ignored if it
     /// starts with a #.
     ///
-    /// This function returns the same results as lua_load, but it has an extra
-    /// error code LUA_ERRFILE if it cannot open/read the file.
+    /// This function returns the same results as State.load, but it has an
+    /// extra error code LUA_ERRFILE if it cannot open/read the file.
     ///
     /// As State.load, this function only loads the chunk; it does not run it.
     ///
@@ -1736,43 +1736,43 @@ pub const State = struct {
         self.call(0, 0);
     }
 
-    /// Opens an loads base library which includes globals such as print and the
+    /// Opens and loads base library which includes globals such as print and the
     /// coroutine sub-library.
     pub fn openBase(self: Self) void {
         self.open(c.luaopen_base);
     }
 
-    /// Opens an loads package library.
+    /// Opens and loads package library.
     pub fn openPackage(self: Self) void {
         self.open(c.luaopen_package);
     }
 
-    /// Opens an loads string library.
+    /// Opens and loads string library.
     pub fn openString(self: Self) void {
         self.open(c.luaopen_string);
     }
 
-    /// Opens an loads table library.
+    /// Opens and loads table library.
     pub fn openTable(self: Self) void {
         self.open(c.luaopen_table);
     }
 
-    /// Opens an loads math library.
+    /// Opens and loads math library.
     pub fn openMath(self: Self) void {
         self.open(c.luaopen_math);
     }
 
-    /// Opens an loads input / output library.
+    /// Opens and loads input / output library.
     pub fn openIO(self: Self) void {
         self.open(c.luaopen_io);
     }
 
-    /// Opens an loads OS library.
+    /// Opens and loads OS library.
     pub fn openOS(self: Self) void {
         self.open(c.luaopen_os);
     }
 
-    /// Opens an loads debug library.
+    /// Opens and loads debug library.
     ///
     /// This is the same a luaL_openlibs.
     pub fn openDebug(self: Self) void {

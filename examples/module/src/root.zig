@@ -5,7 +5,7 @@ fn greet(name: []const u8) void {
     std.debug.print("Hello {s} from Zig module!\n", .{name});
 }
 
-// This function will be called when `require("module")` is called in Lua.
+// This function will be called when `require("module")` is called from Lua.
 export fn luaopen_module(lua: ?*zluajit.c.lua_State) callconv(.c) c_int {
     const state = zluajit.State.initFromCPointer(lua.?);
 
