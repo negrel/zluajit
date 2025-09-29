@@ -567,6 +567,10 @@ pub const State = struct {
     /// - *T              <- userdata of type T
     /// - enum            <- string containing @tagName(t)
     pub fn popAnyType(self: Self, comptime T: type) ?T {
+        if (T == ValueRef or T == FunctionRef or T == TableRef) {
+            @compileError("can't pop stack reference from lua stack");
+        }
+
         const v = self.toAnyType(-1, T);
         if (v != null)
             self.pop(1);
@@ -2044,6 +2048,7 @@ pub const Value = union(ValueType) {
 /// must outlive ValueRef and stack position must remain stable.
 pub const ValueRef = struct {
     const Self = @This();
+    const zluajitPoppable = false;
 
     L: State,
     idx: c_int,

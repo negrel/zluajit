@@ -1,7 +1,7 @@
 # `zluajit` - Zig bindings to LuaJIT C API
 
 `zluajit` provides high quality, ergonomic, well documented and type-safe
-bindings to LuaJIT 5.1/5.2 C API.
+bindings to LuaJIT 5.1/5.2 C API. Supporting other Lua versions is a non goal.
 
 ## Getting started
 
