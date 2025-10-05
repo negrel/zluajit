@@ -236,15 +236,17 @@ test "State.pushAnyType/Thread.popAnyType/Thread.valueType" {
                 try testing.expectEqual(state.valueType(-1), .function);
                 try testing.expectEqual(
                     z.FunctionRef.init(z.ValueRef.init(state, state.top())),
-                    state.popAnyType(z.FunctionRef),
+                    state.toAnyType(-1, z.FunctionRef),
                 );
+                state.pop(1);
 
                 try recoverCall(z.State.pushAnyType, .{ state, ns.zfn });
                 try testing.expectEqual(state.valueType(-1), .function);
                 try testing.expectEqual(
                     z.FunctionRef.init(z.ValueRef.init(state, state.top())),
-                    state.popAnyType(z.FunctionRef),
+                    state.toAnyType(-1, z.FunctionRef),
                 );
+                state.pop(1);
             }
 
             // State / c.lua_State
