@@ -1717,6 +1717,7 @@ pub const State = struct {
     pub fn allocator(self: Self) *std.mem.Allocator {
         var ud: ?*std.mem.Allocator = null;
         _ = c.lua_getallocf(self.lua, @ptrCast(@alignCast(&ud)));
+        if (ud == null) return @constCast(&std.heap.c_allocator);
         return ud.?;
     }
 
