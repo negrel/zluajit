@@ -1006,7 +1006,7 @@ pub const State = struct {
                     },
                     .@"enum" => return self.checkEnum(narg, T, null),
                     .optional => |info| {
-                        if (self.isNil(narg)) {
+                        if (self.isNoneOrNil(narg)) {
                             return null;
                         }
                         return self.checkAnyType(narg, info.child);
