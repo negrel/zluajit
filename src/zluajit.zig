@@ -477,6 +477,7 @@ pub const State = struct {
     /// - Value           <- any Lua type
     ///
     /// Special cases:
+    /// - [*c]T           <- C Data
     /// - *T              <- userdata of type T
     /// - enum            <- string containing @tagName(t)
     pub fn toAnyType(self: Self, idx: c_int, comptime T: type) ?T {
@@ -488,39 +489,44 @@ pub const State = struct {
             []const u8 => self.toString(idx),
             TableRef => TableRef.init(ValueRef.init(self, idx)),
             *c.lua_State => c.lua_tothread(self.lua, idx),
+            CData => return @as(*CData, @ptrCast(
+                @alignCast(@constCast(self.toPointer(idx) orelse return null)),
+            )).*,
             State => self.toState(idx),
             Value => {
                 return switch (self.valueType(idx) orelse return null) {
                     .thread => .{
-                        .thread = self.toAnyType(idx, State) orelse return null,
+                        .thread = self.toAnyType(idx, State).?,
                     },
-                    .boolean => .{
-                        .boolean = self.toAnyType(idx, bool) orelse return null,
-                    },
-                    .nil => null,
-                    .string => .{
-                        .string = self.toAnyType(idx, []const u8) orelse return null,
-                    },
-                    .number => .{
-                        .number = self.toAnyType(idx, f64) orelse return null,
-                    },
+                    .boolean => .{ .boolean = self.toAnyType(idx, bool).? },
+                    .nil => .nil,
+                    .proto => .proto,
+                    .string => .{ .string = self.toAnyType(idx, []const u8).? },
+                    .number => .{ .number = self.toAnyType(idx, f64).? },
                     .function => .{
-                        .function = self.toAnyType(idx, FunctionRef) orelse return null,
+                        .function = self.toAnyType(idx, FunctionRef).?,
                     },
-                    .table => .{
-                        .table = self.toAnyType(idx, TableRef) orelse return null,
-                    },
+                    .table => .{ .table = self.toAnyType(idx, TableRef).? },
                     .userdata => .{
-                        .userdata = self.toAnyType(idx, *anyopaque) orelse return null,
+                        .userdata = self.toAnyType(idx, *anyopaque).?,
                     },
                     .lightuserdata => .{
-                        .lightuserdata = self.toAnyType(idx, *anyopaque) orelse return null,
+                        .lightuserdata = self.toAnyType(idx, *anyopaque).?,
+                    },
+                    .cdata => .{
+                        .cdata = self.toAnyType(idx, CData) orelse null,
                     },
                 };
             },
             else => {
                 switch (@typeInfo(T)) {
-                    .pointer => |info| return self.toUserData(idx, info.child),
+                    .pointer => |info| switch (info.size) {
+                        .one => return self.toUserData(idx, info.child),
+                        .c => return @as(*T, @ptrCast(
+                            @constCast(self.toPointer(idx) orelse return null),
+                        )).*,
+                        else => @compileError("pointer type of size " ++ @tagName(info.size) ++ " is not supported (" ++ @typeName(T) ++ ")"),
+                    },
                     .@"enum" => |info| {
                         if (self.valueType(idx) != .string) return null;
                         const str = self.toString(idx);
@@ -748,12 +754,13 @@ pub const State = struct {
                 .boolean => self.pushAnyType(v.boolean),
                 .function => self.pushAnyType(v.function),
                 .lightuserdata => self.pushAnyType(v.lightuserdata),
-                .nil => return,
+                .nil, .proto => return,
                 .number => self.pushAnyType(v.number),
                 .string => self.pushAnyType(v.string),
                 .table => self.pushAnyType(v.table),
                 .thread => self.pushAnyType(v.thread),
                 .userdata => self.pushAnyType(v.userdata),
+                .cdata => @compileError("pushing cdata is not supported)"),
             },
             else => {
                 switch (@typeInfo(T)) {
@@ -952,6 +959,7 @@ pub const State = struct {
     /// - Value           <- any Lua type
     ///
     /// Special cases:
+    /// - [*c]T           <- C Data
     /// - *T              <- userdata of type T
     /// - enum            <- string containing @tagName(t)
     /// - ?T              <- nil if T is null and T otherwise
@@ -1001,6 +1009,10 @@ pub const State = struct {
                     .pointer => |info| {
                         return switch (info.size) {
                             .one => return self.checkUserData(narg, info.child),
+                            .c => {
+                                self.checkValueType(narg, .cdata);
+                                return self.toAnyType(narg, T) orelse null;
+                            },
                             else => @compileError("pointer type of size " ++ @tagName(info.size) ++ " is not supported (" ++ @typeName(T) ++ ")"),
                         };
                     },
@@ -1176,6 +1188,10 @@ pub const State = struct {
                 thread.dumpNestedStack(visited, depth + 1);
             },
             .userdata => print("userdata@{x}", .{ptr}),
+            .proto => print("proto", .{}),
+            .cdata => print("cdata@{x}", .{
+                @intFromPtr(@as(**anyopaque, @ptrFromInt(ptr)).*),
+            }),
         }
     }
 
@@ -2030,6 +2046,8 @@ pub const ValueType = enum(c_int) {
     table = c.LUA_TTABLE,
     thread = c.LUA_TTHREAD,
     userdata = c.LUA_TUSERDATA,
+    proto = c.LUA_TTHREAD + 1,
+    cdata = c.LUA_TTHREAD + 2,
 };
 
 /// Value is a union over all Lua value types.
@@ -2043,7 +2061,13 @@ pub const Value = union(ValueType) {
     table: TableRef,
     thread: State,
     userdata: *anyopaque,
+    proto: void,
+    cdata: CData,
 };
+
+/// CData defines a LuaJIT C data structure. You may need this to interact with
+/// FFI values or string buffers.
+pub const CData = [*c]u8;
 
 /// ValueRef is a reference to a Lua value on the stack of a state. state
 /// must outlive ValueRef and stack position must remain stable.
