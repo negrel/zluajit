@@ -978,10 +978,7 @@ pub const State = struct {
             c_int => return self.checkInt(narg),
             []const u8 => return self.checkString(narg),
             TableRef => {
-                self.checkValueType(narg, .table) or self.typeError(
-                    narg,
-                    "table",
-                );
+                self.checkValueType(narg, .table);
                 return self.toAnyType(narg, TableRef).?;
             },
             ValueRef => {
