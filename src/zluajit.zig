@@ -2369,7 +2369,9 @@ pub fn wrapFn(func: anytype) CFunction {
 /// This function is used by State.newMetaTable and State.checkUserData.
 pub fn tName(comptime T: type) [*:0]const u8 {
     const tnameField = "zluajitTName";
-    if (@hasDecl(T, tnameField)) return @field(T, tnameField);
+    if (@typeInfo(T) == .@"struct" and @hasDecl(T, tnameField)) {
+        return @field(T, tnameField);
+    }
     return @typeName(T);
 }
 
