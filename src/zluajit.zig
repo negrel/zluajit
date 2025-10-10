@@ -2174,6 +2174,15 @@ pub const TableRef = struct {
         return self.ref.L.toAnyType(-1, T);
     }
 
+    /// Pushes onto the stack the value `t[k]`, pops, and returns it.
+    /// As in Lua, this function may trigger a metamethod for the "index"
+    /// event.
+    pub fn pop(self: Self, k: anytype, comptime T: type) ?T {
+        self.ref.L.pushAnyType(k);
+        self.ref.L.getTable(self.ref.idx);
+        return self.ref.L.popAnyType(T);
+    }
+
     /// Does equivalent to `setmetatable(t, mt)` where `mt` is this table and
     /// `t` is table / userdata at index `idx`.
     pub fn asMetaTableOf(self: Self, idx: c_int) void {
