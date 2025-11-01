@@ -2137,6 +2137,7 @@ pub const TableRef = struct {
     ref: ValueRef,
 
     pub fn init(ref: ValueRef) Self {
+        std.debug.assert(ref.valueType() == .table);
         return .{ .ref = ref };
     }
 
@@ -2219,6 +2220,7 @@ pub const FunctionRef = struct {
     ref: ValueRef,
 
     pub fn init(ref: ValueRef) Self {
+        std.debug.assert(ref.valueType() == .function);
         return .{ .ref = ref };
     }
 
