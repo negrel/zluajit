@@ -754,13 +754,12 @@ pub const State = struct {
                 .boolean => self.pushAnyType(v.boolean),
                 .function => self.pushAnyType(v.function),
                 .lightuserdata => self.pushAnyType(v.lightuserdata),
-                .nil, .proto => return,
+                .nil, .proto, .cdata => return,
                 .number => self.pushAnyType(v.number),
                 .string => self.pushAnyType(v.string),
                 .table => self.pushAnyType(v.table),
                 .thread => self.pushAnyType(v.thread),
                 .userdata => self.pushAnyType(v.userdata),
-                .cdata => @compileError("pushing cdata is not supported)"),
             },
             else => {
                 switch (@typeInfo(T)) {
