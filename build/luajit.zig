@@ -26,6 +26,7 @@ pub fn configure(
         .root_module = lib,
         .linkage = if (shared) .dynamic else .static,
         .use_llvm = llvm,
+        .use_lld = llvm,
     });
 
     // Compile minilua interpreter used at build time to generate files

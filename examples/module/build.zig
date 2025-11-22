@@ -29,6 +29,7 @@ pub fn build(b: *std.Build) void {
         .name = "module",
         .root_module = lib_mod,
         .use_llvm = true,
+        .use_lld = true,
     });
     b.installArtifact(lib);
 }

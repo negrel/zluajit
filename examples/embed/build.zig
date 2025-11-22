@@ -29,6 +29,8 @@ pub fn build(b: *std.Build) void {
     const exe = b.addExecutable(.{
         .name = "embed",
         .root_module = exe_mod,
+        .use_llvm = true,
+        .use_lld = true,
     });
 
     b.installArtifact(exe);

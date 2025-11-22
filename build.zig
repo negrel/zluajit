@@ -32,6 +32,7 @@ pub fn build(b: *std.Build) void {
         .root_module = module,
         .linkage = .static,
         .use_llvm = llvm,
+        .use_lld = llvm,
     });
     if (system) {
         lib.linkSystemLibrary("luajit");
@@ -62,6 +63,7 @@ pub fn build(b: *std.Build) void {
             .unwind_tables = .sync,
         }),
         .use_llvm = llvm,
+        .use_lld = llvm,
     });
     lib_unit_tests.root_module.addImport("zluajit", module);
     const install_lib_unit_tests = b.addInstallArtifact(lib_unit_tests, .{});
