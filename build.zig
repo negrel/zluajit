@@ -5,11 +5,12 @@ const luajit = @import("build/luajit.zig");
 pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
+    const system = b.option(bool, "system", "Use system LuaJIT library ") orelse false;
     const shared = b.option(bool, "shared", "Build shared library instead of static") orelse false;
     const lua52_compat = b.option(bool, "lua52-compat", "Enable Lua 5.2 compatibility layer") orelse false;
     const llvm = b.option(bool, "llvm", "Use LLVM backend") orelse false;
 
-    const luajitLib = luajit.configure(
+    const luajit_lib = luajit.configure(
         b,
         target,
         optimize,
@@ -33,10 +34,14 @@ pub fn build(b: *std.Build) void {
         .linkage = .static,
         .use_llvm = llvm,
     });
-    lib.linkLibrary(luajitLib);
+    if (system) {
+        lib.linkSystemLibrary("luajit");
+    } else {
+        lib.linkLibrary(luajit_lib);
+    }
 
     b.installArtifact(lib);
-    b.installArtifact(luajitLib);
+    b.installArtifact(luajit_lib);
 
     // Generate documentation.
     {
