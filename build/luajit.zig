@@ -261,6 +261,7 @@ pub fn configure(
             .root_module = b.createModule(.{
                 .target = target,
                 .optimize = optimize,
+                .unwind_tables = .sync,
             }),
         });
         exe.addCSourceFile(.{ .file = upstream.path("src/luajit.c") });
