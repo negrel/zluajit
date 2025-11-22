@@ -54,12 +54,12 @@ fn recoverableLuaPanic(lua: ?*z.c.lua_State) callconv(.c) c_int {
     return 0;
 }
 
-fn recoverGetGlobalValue(state: z.State, name: [*c]const u8) !?z.Value {
+fn recoverGetGlobalValue(state: z.State, name: [*c]const u8) !z.Value {
     std.debug.assert(builtin.is_test);
 
     return recover.call(struct {
-        fn getGlobalAnyType(st: z.State, n: [*c]const u8) ?z.Value {
-            return st.getGlobalAnyType(n, z.Value);
+        fn getGlobalAnyType(st: z.State, n: [*c]const u8) z.Value {
+            return st.getGlobalAnyType(n, z.Value).?;
         }
     }.getGlobalAnyType, .{ state, name });
 }
@@ -852,7 +852,7 @@ test "State.getGlobalAnyType" {
             try recoverCall(z.State.openBase, .{state});
 
             const value = try recoverGetGlobalValue(state, "_G");
-            _ = value.?.table;
+            _ = value.table;
         }
     }.testCase);
 }
@@ -869,12 +869,12 @@ test "State.setGlobalAnyType" {
             try recoverCall(z.State.openBase, .{state});
 
             var value = try recoverGetGlobalValue(state, "_G");
-            _ = value.?.table;
+            _ = value.table;
 
             state.setGlobalAnyType("_G", @as(f32, 1));
 
             value = try recoverGetGlobalValue(state, "_G");
-            _ = value.?.number;
+            _ = value.number;
         }
     }.testCase);
 }
@@ -958,73 +958,73 @@ test "State.openXXX" {
             defer state.deinit();
 
             try testing.expect(
-                try recoverGetGlobalValue(state, "_G") == null,
+                try recoverGetGlobalValue(state, "_G") == .nil,
             );
             try testing.expect(
-                try recoverGetGlobalValue(state, "coroutine") == null,
+                try recoverGetGlobalValue(state, "coroutine") == .nil,
             );
             try recoverCall(z.State.openBase, .{state});
             try testing.expect(
-                try recoverGetGlobalValue(state, "_G") != null,
+                try recoverGetGlobalValue(state, "_G") != .nil,
             );
             try testing.expect(
-                try recoverGetGlobalValue(state, "coroutine") != null,
+                try recoverGetGlobalValue(state, "coroutine") != .nil,
             );
 
             try testing.expect(
-                try recoverGetGlobalValue(state, "package") == null,
+                try recoverGetGlobalValue(state, "package") == .nil,
             );
             try recoverCall(z.State.openPackage, .{state});
             try testing.expect(
-                try recoverGetGlobalValue(state, "package") != null,
+                try recoverGetGlobalValue(state, "package") != .nil,
             );
 
             try testing.expect(
-                try recoverGetGlobalValue(state, "table") == null,
+                try recoverGetGlobalValue(state, "table") == .nil,
             );
             try recoverCall(z.State.openTable, .{state});
             try testing.expect(
-                try recoverGetGlobalValue(state, "table") != null,
+                try recoverGetGlobalValue(state, "table") != .nil,
             );
 
             try testing.expect(
-                try recoverGetGlobalValue(state, "string") == null,
+                try recoverGetGlobalValue(state, "string") == .nil,
             );
             try recoverCall(z.State.openString, .{state});
             try testing.expect(
-                try recoverGetGlobalValue(state, "string") != null,
+                try recoverGetGlobalValue(state, "string") != .nil,
             );
 
             try testing.expect(
-                try recoverGetGlobalValue(state, "io") == null,
+                try recoverGetGlobalValue(state, "io") == .nil,
             );
             try recoverCall(z.State.openIO, .{state});
             try testing.expect(
-                try recoverGetGlobalValue(state, "io") != null,
+                try recoverGetGlobalValue(state, "io") != .nil,
             );
 
             try testing.expect(
-                try recoverGetGlobalValue(state, "os") == null,
+                try recoverGetGlobalValue(state, "os") == .nil,
             );
             try recoverCall(z.State.openOS, .{state});
             try testing.expect(
-                try recoverGetGlobalValue(state, "os") != null,
+                try recoverGetGlobalValue(state, "os") != .nil,
             );
 
             try testing.expect(
-                try recoverGetGlobalValue(state, "math") == null,
+                try recoverGetGlobalValue(state, "math") == .nil,
             );
             try recoverCall(z.State.openMath, .{state});
             try testing.expect(
-                try recoverGetGlobalValue(state, "math") != null,
+                try recoverGetGlobalValue(state, "math") != .nil,
             );
 
             try testing.expect(
-                try recoverGetGlobalValue(state, "debug") == null,
+                try recoverGetGlobalValue(state, "debug") == .nil,
             );
             try recoverCall(z.State.openDebug, .{state});
             try testing.expect(
-                try recoverGetGlobalValue(state, "debug") != null,
+                try recoverGetGlobalValue(state, "debug") != .nil,
             );
         }
     }.testCase);
