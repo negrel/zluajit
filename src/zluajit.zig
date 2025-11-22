@@ -1995,15 +1995,13 @@ pub const LoadFileError = error{
     InvalidSyntax,
     /// LUA_ERRMEM
     OutOfMemory,
-    /// LUA_ERRFILE
-    OpenRead,
 };
 
 fn loadFileErrorFromInt(code: c_int) LoadFileError!void {
     return switch (code) {
         c.LUA_ERRSYNTAX => LoadFileError.InvalidSyntax,
         c.LUA_ERRMEM => LoadFileError.OutOfMemory,
-        c.LUA_ERRFILE => LoadFileError.OpenRead,
+        c.LUA_ERRFILE => unreachable,
         else => {},
     };
 }
