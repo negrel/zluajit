@@ -182,26 +182,11 @@ pub const State = struct {
         c.lua_getglobal(self.lua, name);
     }
 
-    /// Gets value of the global `name`, pops and returns it.
-    pub fn getGlobalAnyType(self: Self, name: [*c]const u8, comptime T: type) ?T {
-        const currentTop = self.top();
-        c.lua_getglobal(self.lua, name);
-        if (currentTop == self.top()) return null;
-
-        return self.popAnyType(T);
-    }
-
     /// Pops a value from the stack and sets it as the new value of global `name`.
     ///
     /// This is the same as lua_setglobal.
     pub fn setGlobal(self: Self, name: [*c]const u8) void {
         c.lua_setglobal(self.lua, name);
-    }
-
-    /// Sets provided value as the new value of global `name`.
-    pub fn setGlobalAnyType(self: Self, name: [*c]const u8, value: anytype) void {
-        self.pushAnyType(value);
-        self.setGlobal(name);
     }
 
     /// Returns true if the value at the given acceptable index has type
