@@ -2155,6 +2155,14 @@ pub const TableRef = struct {
         self.ref.L.setTable(self.ref.idx);
     }
 
+    /// Does the equivalent to `t[k] = v`. This perform a raw access and
+    /// doesn't trigger "index" event (no metamethod is called).
+    pub fn rawSet(self: Self, k: anytype, v: anytype) void {
+        self.ref.L.pushAnyType(k);
+        self.ref.L.pushAnyType(v);
+        self.ref.L.rawSet(self.ref.idx);
+    }
+
     /// Pushes onto the stack the value `t[k]` and returns a reference to it.
     /// As in Lua, this function may trigger a metamethod for the "index"
     /// event.
@@ -2169,6 +2177,14 @@ pub const TableRef = struct {
     pub fn get(self: Self, k: anytype, comptime T: type) ?T {
         self.ref.L.pushAnyType(k);
         self.ref.L.getTable(self.ref.idx);
+        return self.ref.L.toAnyType(-1, T);
+    }
+
+    /// Pushes onto the stack the value `t[k]` and returns it. This perform a
+    /// raw access and doesn't trigger "index" event (no metamethod is called).
+    pub fn rawGet(self: Self, k: anytype, comptime T: type) ?T {
+        self.ref.L.pushAnyType(k);
+        self.ref.L.rawGet(self.ref.idx);
         return self.ref.L.toAnyType(-1, T);
     }
 
