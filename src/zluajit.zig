@@ -1754,8 +1754,8 @@ pub const State = struct {
         self.call(0, 0);
     }
 
-    /// Opens and loads base library which includes globals such as print and the
-    /// coroutine sub-library.
+    /// Opens and loads base library which includes globals such as print and
+    /// the coroutine sub-library.
     pub fn openBase(self: Self) void {
         self.open(c.luaopen_base);
     }
