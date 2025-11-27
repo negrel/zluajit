@@ -2123,7 +2123,7 @@ pub const TableRef = struct {
         return .{ .ref = ref };
     }
 
-    /// Does the equivalent to `t[k] = v`.
+    /// Does the equivalent to `t[k] = v`. Stack remains unchanged.
     /// As in Lua, this function may trigger a metamethod for the "newindex"
     /// event.
     pub fn setField(self: Self, k: [*c]const u8, v: anytype) void {
@@ -2131,7 +2131,7 @@ pub const TableRef = struct {
         self.ref.L.setField(self.ref.idx, k);
     }
 
-    /// Does the equivalent to `t[k] = v`.
+    /// Does the equivalent to `t[k] = v`. Stack remains unchanged.
     /// As in Lua, this function may trigger a metamethod for the "newindex"
     /// event.
     pub fn set(self: Self, k: anytype, v: anytype) void {
@@ -2140,15 +2140,17 @@ pub const TableRef = struct {
         self.ref.L.setTable(self.ref.idx);
     }
 
-    /// Does the equivalent to `t[k] = v`. This perform a raw access and
-    /// doesn't trigger "index" event (no metamethod is called).
+    /// Does the equivalent to `t[k] = v`. Stack remains unchanged.
+    /// This perform a raw access and doesn't trigger "index" event (no
+    /// metamethod is called).
     pub fn rawSet(self: Self, k: anytype, v: anytype) void {
         self.ref.L.pushAnyType(k);
         self.ref.L.pushAnyType(v);
         self.ref.L.rawSet(self.ref.idx);
     }
 
-    /// Pushes onto the stack the value `t[k]` and returns a reference to it.
+    /// Pushes onto the stack the value `t[k]` and returns it.
+    /// Stack remains unchanged.
     /// As in Lua, this function may trigger a metamethod for the "index"
     /// event.
     pub fn getField(self: Self, k: [*c]const u8, comptime T: type) ?T {
@@ -2156,17 +2158,19 @@ pub const TableRef = struct {
         return self.ref.L.toAnyType(self.ref.idx, T);
     }
 
-    /// Pushes onto the stack the value `t[k]` and returns it.
-    /// As in Lua, this function may trigger a metamethod for the "index"
-    /// event.
+    /// Pushes onto the stack the value `t[k]` and returns it. Stack remains
+    /// unchanged.
+    /// As in Lua, this function may trigger a metamethod for the "index" event.
     pub fn get(self: Self, k: anytype, comptime T: type) ?T {
         self.ref.L.pushAnyType(k);
         self.ref.L.getTable(self.ref.idx);
         return self.ref.L.toAnyType(-1, T);
     }
 
-    /// Pushes onto the stack the value `t[k]` and returns it. This perform a
-    /// raw access and doesn't trigger "index" event (no metamethod is called).
+    /// Pushes onto the stack the value `t[k]` and returns it. Stack remains
+    /// unchanged.
+    /// This perform a raw access and doesn't trigger "index" event (no
+    /// metamethod is called).
     pub fn rawGet(self: Self, k: anytype, comptime T: type) ?T {
         self.ref.L.pushAnyType(k);
         self.ref.L.rawGet(self.ref.idx);
