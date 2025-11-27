@@ -472,7 +472,13 @@ pub const State = struct {
             f32, f64 => @floatCast(self.toNumber(idx)),
             Integer => self.toInteger(idx),
             []const u8 => self.toString(idx),
-            TableRef => TableRef.init(ValueRef.init(self, idx)),
+            TableRef => {
+                const vref = ValueRef.init(self, idx);
+                if (vref.valueType() != .table) {
+                    return null;
+                }
+                return TableRef.init(vref);
+            },
             *c.lua_State => c.lua_tothread(self.lua, idx),
             CData => return @as(*CData, @ptrCast(
                 @alignCast(@constCast(self.toPointer(idx) orelse return null)),
