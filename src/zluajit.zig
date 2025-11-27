@@ -720,6 +720,10 @@ pub const State = struct {
 
     /// Pushes a value of type T on Lua stack using comptime reflection.
     fn pushT(self: Self, comptime T: type, v: T) void {
+        if ((T == ValueType or T == Value) and v == .nil) {
+            return self.pushNil();
+        }
+
         switch (T) {
             bool => return c.lua_pushboolean(self.lua, @intFromBool(v)),
             CFunction => return self.pushCFunction(v),
@@ -739,7 +743,10 @@ pub const State = struct {
                 .boolean => self.pushAnyType(v.boolean),
                 .function => self.pushAnyType(v.function),
                 .lightuserdata => self.pushAnyType(v.lightuserdata),
-                .nil, .proto, .cdata => return,
+                .nil => self.pushNil(),
+                .proto, .cdata => @panic(
+                    "can't push proto / cdata on Lua stack",
+                ),
                 .number => self.pushAnyType(v.number),
                 .string => self.pushAnyType(v.string),
                 .table => self.pushAnyType(v.table),
@@ -751,7 +758,13 @@ pub const State = struct {
                     .pointer => |info| {
                         return switch (info.size) {
                             .one => return self.pushT(info.child, v.*),
-                            else => @compileError("pointer type of size " ++ @tagName(info.size) ++ " is not supported (" ++ @typeName(T) ++ ")"),
+                            else => @compileError(
+                                "pointer type of size " ++
+                                    @tagName(info.size) ++
+                                    " is not supported (" ++
+                                    @typeName(T) ++
+                                    ")",
+                            ),
                         };
                     },
                     .array => |info| {
