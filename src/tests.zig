@@ -59,7 +59,7 @@ fn recoverGetGlobalValue(state: z.State, name: [*c]const u8) !z.Value {
 
     return recover.call(struct {
         fn getGlobalAnyType(st: z.State, n: [*c]const u8) z.Value {
-            return st.getGlobalAnyType(n, z.Value).?;
+            return st.globalRef().get(n, z.Value).?;
         }
     }.getGlobalAnyType, .{ state, name });
 }
@@ -853,28 +853,6 @@ test "State.getGlobalAnyType" {
 
             const value = try recoverGetGlobalValue(state, "_G");
             _ = value.table;
-        }
-    }.testCase);
-}
-
-test "State.setGlobalAnyType" {
-    try withProgressiveAllocator(struct {
-        fn testCase(alloc: *std.mem.Allocator) anyerror!void {
-            var state = try z.State.init(.{
-                .allocator = alloc,
-                .panicHandler = recoverableLuaPanic,
-            });
-            defer state.deinit();
-
-            try recoverCall(z.State.openBase, .{state});
-
-            var value = try recoverGetGlobalValue(state, "_G");
-            _ = value.table;
-
-            state.setGlobalAnyType("_G", @as(f32, 1));
-
-            value = try recoverGetGlobalValue(state, "_G");
-            _ = value.number;
         }
     }.testCase);
 }
