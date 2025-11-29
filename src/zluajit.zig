@@ -628,6 +628,17 @@ pub const State = struct {
         c.lua_pushlstring(self.lua, s.ptr, s.len);
     }
 
+    /// Pushes the zero-terminated string pointed to by `s` onto the stack. Lua
+    /// makes (or reuses) an internal copy of the given string, so the memory at
+    /// `s` can be freed or reused immediately after the function returns. The
+    /// string cannot contain embedded zeros; It is assumed to end at the first
+    /// zero.
+    ///
+    /// This is the same as lua_pushstring.
+    pub fn pushCString(self: Self, s: [*c]const u8) void {
+        c.lua_pushstring(self.lua, s);
+    }
+
     /// Pushes a new C closure onto the stack.
     ///
     /// When a CFunction is created, it is possible to associate some values
@@ -736,6 +747,7 @@ pub const State = struct {
             *anyopaque => return self.pushLightUserData(v),
             f32, f64 => return self.pushNumber(v),
             Integer => return self.pushInteger(v),
+            [*c]const u8 => return self.pushCString(v),
             []const u8, [:0]const u8 => return self.pushString(v),
             TableRef, FunctionRef => return self.pushAnyType(v.ref),
             ValueRef => return self.pushValue(v.idx),
@@ -2245,7 +2257,19 @@ pub const FunctionRef = struct {
         return .{ .ref = ref };
     }
 
-    // TODO: add call, pCall helpers.
+    /// Calls the Lua function with provided arguments and returns the number of
+    /// result on the stack.
+    pub fn call(self: *Self, args: anytype, nresult: c_int) void {
+        const info = @typeInfo(@TypeOf(args)).@"struct";
+
+        self.ref.L.pushValue(self.ref.idx);
+
+        inline for (0..info.fields.len) |i| {
+            self.ref.L.pushAnyType(args[i]);
+        }
+
+        self.ref.L.call(info.fields.len, nresult);
+    }
 };
 
 /// Type for C functions.
@@ -2382,7 +2406,7 @@ pub fn wrapFn(func: anytype) CFunction {
                 },
                 else => {},
             }
-            if (info.return_type.? != void) {
+            if (info.return_type != void) {
                 if (info.return_type == c_int) {
                     return result;
                 }
