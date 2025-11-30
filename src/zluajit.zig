@@ -992,10 +992,10 @@ pub const State = struct {
     /// - ?T              <- nil if T is null and T otherwise
     pub fn checkAnyType(self: Self, narg: c_int, comptime T: type) T {
         switch (T) {
-            bool => return self.isBoolean(narg) or self.typeError(
-                narg,
-                "boolean",
-            ),
+            bool => {
+                if (!self.isBoolean(narg)) self.typeError(narg, "boolean");
+                return self.toAnyType(narg, bool).?;
+            },
             CData => self.checkCData(narg),
             CFunction => {
                 self.isCFunction(narg) or self.argError(
