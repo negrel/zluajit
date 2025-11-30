@@ -427,6 +427,14 @@ pub const State = struct {
         return @ptrCast(@alignCast(c.lua_touserdata(self.lua, idx)));
     }
 
+    /// If the value at the given acceptable index is a cdata, returns its
+    /// address.
+    pub fn toCData(self: Self, idx: c_int) CData {
+        return @as(*CData, @ptrCast(
+            @alignCast(@constCast(self.toPointer(idx) orelse return null)),
+        )).*;
+    }
+
     /// Returns the "length" of the value at the given acceptable index: for
     /// strings, this is the string length; for tables, this is the result of
     /// the length operator ('#'); for userdata, this is the size of the block
@@ -480,9 +488,7 @@ pub const State = struct {
                 return TableRef.init(vref);
             },
             *c.lua_State => c.lua_tothread(self.lua, idx),
-            CData => return @as(*CData, @ptrCast(
-                @alignCast(@constCast(self.toPointer(idx) orelse return null)),
-            )).*,
+            CData => self.toCData(idx),
             State => self.toState(idx),
             Value => {
                 return switch (self.valueType(idx) orelse return null) {
@@ -955,6 +961,12 @@ pub const State = struct {
         return self.checkUserDataWithName(narg, tName(T), T);
     }
 
+    /// Checks whether the function argument narg is a cdata.
+    pub fn checkCData(self: Self, narg: c_int) CData {
+        self.checkValueType(narg, .cdata);
+        return self.toCData(narg);
+    }
+
     /// Checks whether the argument `narg` is of type T or coercible and returns
     /// it.
     ///
@@ -980,7 +992,11 @@ pub const State = struct {
     /// - ?T              <- nil if T is null and T otherwise
     pub fn checkAnyType(self: Self, narg: c_int, comptime T: type) T {
         switch (T) {
-            bool => return self.isBoolean(narg) or self.typeError(narg, "boolean"),
+            bool => return self.isBoolean(narg) or self.typeError(
+                narg,
+                "boolean",
+            ),
+            CData => self.checkCData(narg),
             CFunction => {
                 self.isCFunction(narg) or self.argError(
                     narg,
