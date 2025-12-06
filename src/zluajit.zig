@@ -2202,7 +2202,7 @@ pub const TableRef = struct {
     /// event.
     pub fn getField(self: Self, k: [*c]const u8, comptime T: type) ?T {
         self.ref.L.getField(self.ref.idx, k);
-        return self.ref.L.toAnyType(self.ref.idx, T);
+        return self.ref.L.toAnyType(-1, T);
     }
 
     /// Pushes onto the stack the value `t[k]` and returns it.
