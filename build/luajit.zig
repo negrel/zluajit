@@ -20,7 +20,10 @@ pub fn configure(
         .target = target,
         .optimize = optimize,
         .unwind_tables = .sync,
+        .link_libc = true,
+        .sanitize_c = .off,
     });
+
     const library = b.addLibrary(.{
         .name = "lua",
         .root_module = lib,
@@ -33,19 +36,13 @@ pub fn configure(
     const minilua_mod = b.createModule(.{
         .target = b.graph.host, // Use host target for cross build
         .optimize = .ReleaseSafe,
+        .link_libc = true,
+        .sanitize_c = .off,
     });
     const minilua = b.addExecutable(.{
         .name = "minilua",
         .root_module = minilua_mod,
     });
-    minilua.linkLibC();
-    // FIXME: remove branch when zig-0.15 is released and 0.14 can be dropped
-    const builtin = @import("builtin");
-    if (builtin.zig_version.major == 0 and builtin.zig_version.minor < 15) {
-        minilua.root_module.sanitize_c = false;
-    } else {
-        minilua.root_module.sanitize_c = .off;
-    }
     minilua.addCSourceFile(.{ .file = upstream.path("src/host/minilua.c") });
 
     // Generate the buildvm_arch.h file using minilua
@@ -118,35 +115,46 @@ pub fn configure(
     const vm_mod = b.createModule(.{
         .target = b.graph.host, // Use host target for cross build
         .optimize = .ReleaseSafe,
+        .sanitize_c = .off,
     });
     const buildvm = b.addExecutable(.{
         .name = "buildvm",
         .root_module = vm_mod,
     });
     buildvm.linkLibC();
-    // FIXME: remove branch when zig-0.15 is released and 0.14 can be dropped
-    if (builtin.zig_version.major == 0 and builtin.zig_version.minor < 15) {
-        buildvm.root_module.sanitize_c = false;
-    } else {
-        buildvm.root_module.sanitize_c = .off;
-    }
 
     // Needs to run after the buildvm_arch.h and luajit.h files are generated
     buildvm.step.dependOn(&dynasm_run.step);
     buildvm.step.dependOn(&genversion_run.step);
 
     const buildvm_c_flags: []const []const u8 = switch (target.result.cpu.arch) {
-        .aarch64, .aarch64_be => &.{ "-DLUAJIT_TARGET=LUAJIT_ARCH_arm64", "-DLJ_ARCH_HASFPU=1", "-DLJ_ABI_SOFTFP=0" },
-        .x86_64 => &.{"-DLUAJIT_TARGET=LUAJIT_ARCH_X64"},
+        .aarch64, .aarch64_be => &.{
+            if (lua52_compat) "-DLUAJIT_ENABLE_LUA52COMPAT=1" else "",
+            "-DLUAJIT_TARGET=LUAJIT_ARCH_arm64",
+            "-DLJ_ARCH_HASFPU=1",
+            "-DLJ_ABI_SOFTFP=0",
+        },
+        .x86_64 => &.{
+            if (lua52_compat) "-DLUAJIT_ENABLE_LUA52COMPAT=1" else "",
+            "-DLUAJIT_TARGET=LUAJIT_ARCH_X64",
+        },
         else => &.{},
     };
 
     buildvm.addCSourceFiles(.{
-        .root = .{ .dependency = .{
-            .dependency = upstream,
-            .sub_path = "",
-        } },
-        .files = &.{ "src/host/buildvm_asm.c", "src/host/buildvm_fold.c", "src/host/buildvm_lib.c", "src/host/buildvm_peobj.c", "src/host/buildvm.c" },
+        .root = .{
+            .dependency = .{
+                .dependency = upstream,
+                .sub_path = "",
+            },
+        },
+        .files = &.{
+            "src/host/buildvm_asm.c",
+            "src/host/buildvm_fold.c",
+            "src/host/buildvm_lib.c",
+            "src/host/buildvm_peobj.c",
+            "src/host/buildvm.c",
+        },
         .flags = buildvm_c_flags,
     });
 
@@ -218,12 +226,10 @@ pub fn configure(
     library.step.dependOn(&buildvm_folddef.step);
     library.step.dependOn(&buildvm_ljvm.step);
 
-    library.linkLibC();
-
     lib.addCMacro("LUAJIT_UNWIND_EXTERNAL", "");
 
     if (lua52_compat)
-        lib.addCMacro("LUAJIT_ENABLE_LUA52COMPAT", "");
+        lib.addCMacro("LUAJIT_ENABLE_LUA52COMPAT", "1");
 
     lib.linkSystemLibrary("unwind", .{});
 
@@ -243,13 +249,6 @@ pub fn configure(
         .files = &luajit_vm,
     });
 
-    // FIXME: remove branch when zig-0.15 is released and 0.14 can be dropped
-    if (builtin.zig_version.major == 0 and builtin.zig_version.minor < 15) {
-        lib.sanitize_c = false;
-    } else {
-        lib.sanitize_c = .off;
-    }
-
     library.installHeader(upstream.path("src/lua.h"), "lua.h");
     library.installHeader(upstream.path("src/lualib.h"), "lualib.h");
     library.installHeader(upstream.path("src/lauxlib.h"), "lauxlib.h");
@@ -265,6 +264,9 @@ pub fn configure(
                 .unwind_tables = .sync,
             }),
         });
+        if (lua52_compat)
+            exe.root_module.addCMacro("LUAJIT_ENABLE_LUA52COMPAT", "1");
+
         exe.addCSourceFile(.{ .file = upstream.path("src/luajit.c") });
         exe.addIncludePath(luajit_h.dirname());
         exe.linkLibC();
