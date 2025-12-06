@@ -515,6 +515,7 @@ pub const State = struct {
                     },
                 };
             },
+            ValueRef => ValueRef.init(self, idx),
             else => {
                 switch (@typeInfo(T)) {
                     .pointer => |info| switch (info.size) {
